@@ -1,0 +1,32 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binaries
+*.test
+
+# Go coverage files
+*.out
+coverage.out
+
+# IDEs
+.vscode/
+.idea/
+
+# macOS
+.DS_Store
+
+# Environment files
+.env
+.env.*
+
+# Local config
+config.local.json
+
+# Build output
+bin/
+dist/
+build/
