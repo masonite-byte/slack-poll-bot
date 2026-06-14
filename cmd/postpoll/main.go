@@ -4,11 +4,13 @@ import (
 	"log/slog"
 	"os"
 
+	"github.com/joho/godotenv"
 	"github.com/masonite-byte/slack-poll-bot/internal/runner"
 	"github.com/masonite-byte/slack-poll-bot/internal/slackclient"
 )
 
 func main() {
+	_ = godotenv.Load()
 	client := slackclient.New()
 	if err := runner.RunPostPoll(client); err != nil {
 		slog.Error("Error posting poll", "error", err)
