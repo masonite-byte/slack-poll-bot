@@ -15,6 +15,22 @@ type Client struct {
 	botUserID string
 }
 
+// Reaction is a lightweight representation of slack.ItemReaction used by callers/tests.
+type Reaction struct {
+	Name  string
+	Count int
+	Users []string
+}
+
+// API defines the subset of Slack operations used by the application.
+type API interface {
+	PostMessage(text string) (string, string, error)
+	AddReaction(name, timestamp string) error
+	GetReactions(timestamp string) ([]Reaction, error)
+	FindLatestPoll() (string, error)
+	BotUserID() (string, error)
+}
+
 // New initializes the Slack client using environment variables and validates them
 func New() *Client {
 	token := os.Getenv("SLACK_BOT_TOKEN")
@@ -44,9 +60,21 @@ func (c *Client) AddReaction(name, timestamp string) error {
 }
 
 // GetReactions retrieves all emoji counts attached to a given message timestamp
-func (c *Client) GetReactions(timestamp string) ([]slack.ItemReaction, error) {
+func (c *Client) GetReactions(timestamp string) ([]Reaction, error) {
 	ref := slack.NewRefToMessage(c.channelID, timestamp)
-	return c.api.GetReactions(ref, slack.NewGetReactionsParameters())
+	items, err := c.api.GetReactions(ref, slack.NewGetReactionsParameters())
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Reaction, 0, len(items))
+	for _, it := range items {
+		out = append(out, Reaction{
+			Name:  it.Name,
+			Count: it.Count,
+			Users: it.Users,
+		})
+	}
+	return out, nil
 }
 
 // BotUserID returns the bot user ID by calling auth.test and caches the result
