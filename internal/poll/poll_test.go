@@ -9,10 +9,10 @@ import (
 
 func TestWeeklyPollContainsHeaderAndOptions(t *testing.T) {
 	s := weeklyPoll()
-	if !strings.HasPrefix(s, "📊 *Weekly Poll*") {
+	if !strings.HasPrefix(s, "@channel: 📊 *Weekly Poll*") {
 		t.Fatalf("WeeklyPoll() missing header; got: %q", s)
 	}
-	if !strings.Contains(s, "Option A") || !strings.Contains(s, "Option B") || !strings.Contains(s, "Option C") {
+	if !strings.Contains(s, "Soccer") || !strings.Contains(s, "Basketball") || !strings.Contains(s, "Ultimate Frisbee") {
 		t.Fatalf("WeeklyPoll() missing expected options; got: %q", s)
 	}
 }
@@ -58,7 +58,7 @@ func TestRunoffPollBlocksPreservesTieOptions(t *testing.T) {
 
 func TestPollOptionsTextIncludesAllDefaultOptions(t *testing.T) {
 	got := PollOptionsText()
-	if !strings.Contains(got, ":+1: Option A") || !strings.Contains(got, ":tada: Option B") || !strings.Contains(got, ":rocket: Option C") {
+	if !strings.Contains(got, ":soccer: Soccer") || !strings.Contains(got, ":basketball: Basketball") || !strings.Contains(got, ":flying_disc: Ultimate Frisbee") {
 		t.Fatalf("PollOptionsText() output missing expected options; got: %q", got)
 	}
 }

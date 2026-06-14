@@ -3,7 +3,6 @@ package main
 import (
 	"log/slog"
 	"os"
-	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/masonite-byte/slack-poll-bot/internal/runner"
@@ -13,18 +12,9 @@ import (
 func main() {
 	_ = godotenv.Load()
 	client := slackclient.New()
-	_, isTie, err := runner.RunResults(client)
+	_, _, err := runner.RunResults(client)
 	if err != nil {
 		slog.Error("error computing results", "error", err)
 		os.Exit(1)
-	}
-
-	if isTie {
-		slog.Info("tie detected, waiting before posting runoff poll")
-		time.Sleep(5 * time.Minute)
-		if _, err := runner.RunoffPoll(client); err != nil {
-			slog.Error("runoff poll failed", "error", err)
-			os.Exit(1)
-		}
 	}
 }
