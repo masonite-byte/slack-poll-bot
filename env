@@ -1,0 +1,16 @@
+# Slack Bot OAuth Token
+# Example: xoxb-1234567890123-1234567890123-abcdefghijklmnopqrstuvwxyz
+SLACK_BOT_TOKEN=
+
+# Slack Channel ID where polls will be posted
+# Example: C0123456789
+SLACK_CHANNEL_ID=
+
+# Poll posting schedule metadata (optional)
+# Used if you later want configurable poll text or channels
+POLL_TITLE=Weekly Poll
+
+# GitHub Actions environment
+# Leave blank locally unless needed
+GITHUB_REPOSITORY=
+GITHUB_REF=
