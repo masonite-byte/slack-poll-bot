@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/masonite-byte/slack-poll-bot/internal/slackclient"
+	"github.com/slack-go/slack"
 )
 
 type mockAPI struct {
@@ -15,6 +16,10 @@ type mockAPI struct {
 }
 
 func (m *mockAPI) PostMessage(text string) (string, string, error) {
+	m.posted = text
+	return "C", m.ts, nil
+}
+func (m *mockAPI) PostBlocks(text string, blocks ...slack.Block) (string, string, error) {
 	m.posted = text
 	return "C", m.ts, nil
 }
