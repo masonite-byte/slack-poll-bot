@@ -1,46 +1,40 @@
-# Binaries
-bin/
-*.exe
-*.out
 
+# =========================
 # Environment files
+# =========================
 .env
 .env.*
 !.env.example
 
-# OS & IDEs
-.DS_Store
-.vscode/
-.idea/
-# Binaries
+# =========================
+# Binaries / build output
+# =========================
+bin/
+dist/
+build/
 *.exe
 *.exe~
 *.dll
 *.so
 *.dylib
-
-# Test binaries
 *.test
 
-# Go coverage files
-*.out
+# Go coverage
 coverage.out
+*.out
 
+# =========================
+# OS files
+# =========================
+.DS_Store
+
+# =========================
 # IDEs
+# =========================
 .vscode/
 .idea/
 
-# macOS
-.DS_Store
-
-# Environment files
-.env
-.env.*
-
+# =========================
 # Local config
+# =========================
 config.local.json
-
-# Build output
-bin/
-dist/
-build/
