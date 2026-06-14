@@ -28,9 +28,18 @@ func main() {
     var reportLines []string
     reportLines = append(reportLines, "📊 *Final Poll Results Are In!* \n")
 
+    // determine bot user id so we only subtract its seeded reactions when present
+    botID, _ := client.BotUserID()
+
     for _, reaction := range reactions {
-        // Subtracting 1 removes the bot's own seed reaction from the total vote tally
-        voterCount := reaction.Count - 1
+        voterCount := reaction.Count
+        // only subtract the bot's seed reaction if the bot is present in the reactors list
+        for _, u := range reaction.Users {
+            if u == botID {
+                voterCount--
+                break
+            }
+        }
         if voterCount < 0 {
             voterCount = 0
         }
