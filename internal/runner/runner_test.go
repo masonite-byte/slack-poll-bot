@@ -88,3 +88,54 @@ func TestBuildResultsReportsTie(t *testing.T) {
 		t.Fatalf("expected tie summary for Option A and Option B, got %q", result)
 	}
 }
+
+func TestBuildResultsNoVotes(t *testing.T) {
+	result := BuildResults(nil, "B0")
+	if !strings.Contains(result, "No votes have been cast yet.") {
+		t.Fatalf("expected no votes summary, got %q", result)
+	}
+}
+
+func TestBuildResultsIgnoresBotOnlyReaction(t *testing.T) {
+	reactions := []slackclient.Reaction{{Name: "+1", Count: 1, Users: []string{"B0"}}}
+	result := BuildResults(reactions, "B0")
+	if !strings.Contains(result, "No votes have been cast yet.") {
+		t.Fatalf("expected bot-only reaction to be ignored, got %q", result)
+	}
+}
+
+func TestBuildResultsUnknownEmojiLabelFallsBack(t *testing.T) {
+	reactions := []slackclient.Reaction{{Name: "heart", Count: 2, Users: []string{"U1", "U2"}}}
+	result := BuildResults(reactions, "B0")
+	if !strings.Contains(result, "heart received 2 votes") {
+		t.Fatalf("expected fallback label for unknown reaction, got %q", result)
+	}
+}
+
+func TestRunoffPollNoVotes(t *testing.T) {
+	m := &mockAPI{ts: "321", botID: "B0", reactions: []slackclient.Reaction{}}
+	result, err := RunoffPoll(m)
+	if err != nil {
+		t.Fatalf("RunoffPoll error: %v", err)
+	}
+	if !strings.Contains(result, "No votes have been cast yet. Runoff requires at least one vote.") {
+		t.Fatalf("unexpected runoff result for no votes: %q", result)
+	}
+}
+
+func TestRunoffPollNoRunoffWhenLeader(t *testing.T) {
+	m := &mockAPI{ts: "321", botID: "B0", reactions: []slackclient.Reaction{
+		{Name: "+1", Count: 3, Users: []string{"U1"}},
+		{Name: "tada", Count: 1, Users: []string{"U2"}},
+	}}
+	result, err := RunoffPoll(m)
+	if err != nil {
+		t.Fatalf("RunoffPoll error: %v", err)
+	}
+	if !strings.Contains(result, "No runoff required. Current leader is Option A.") {
+		t.Fatalf("unexpected runoff result when leader exists: %q", result)
+	}
+	if m.posted != "" {
+		t.Fatalf("expected no new poll posted when no runoff is needed, got %q", m.posted)
+	}
+}

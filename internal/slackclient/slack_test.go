@@ -30,10 +30,20 @@ func TestContainsPollMarker(t *testing.T) {
 		slack.NewTextBlockObject("mrkdwn", "poll_marker:weekly", false, false),
 	)
 
-	msg := slack.Message{}
-	msg.Blocks = slack.Blocks{BlockSet: []slack.Block{markerBlock}}
+	msg := slack.Message{Msg: slack.Msg{Blocks: slack.Blocks{BlockSet: []slack.Block{markerBlock}}}}
 
 	if !containsPollMarker(msg) {
 		t.Fatalf("expected poll marker to be detected")
+	}
+}
+
+func TestContainsPollMarkerIgnoresNonPollMarkerBlock(t *testing.T) {
+	markerBlock := slack.NewContextBlock("other_context",
+		slack.NewTextBlockObject("mrkdwn", "poll_marker:weekly", false, false),
+	)
+
+	msg := slack.Message{Msg: slack.Msg{Blocks: slack.Blocks{BlockSet: []slack.Block{markerBlock}}}}
+	if containsPollMarker(msg) {
+		t.Fatalf("expected non-poll marker block to be ignored")
 	}
 }
