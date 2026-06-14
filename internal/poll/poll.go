@@ -9,23 +9,28 @@ import (
 
 var (
 	OptionReactions = map[string]string{
-		"Option A": "+1",
-		"Option B": "tada",
-		"Option C": "rocket",
+		"Soccer":           "soccer",
+		"Basketball":       "basketball",
+		"Ultimate Frisbee": "flying_disc",
+		"Volleyball":       "volleyball",
+		"Hackeysack":       "athletic_shoe",
+		"Other?????":       "question",
 	}
 
 	ReactionLabels = map[string]string{
-		"thumbsup": "Option A",
-		"+1":       "Option A",
-		"tada":     "Option B",
-		"rocket":   "Option C",
+		"soccer":        "Soccer",
+		"basketball":    "Basketball",
+		"flying_disc":   "Ultimate Frisbee",
+		"volleyball":    "Volleyball",
+		"athletic_shoe": "Hackeysack",
+		"question":      "Other?????",
 	}
 
-	DefaultPollOptions = []string{"Option A", "Option B", "Option C"}
+	DefaultPollOptions = []string{"Soccer", "Basketball", "Ultimate Frisbee", "Volleyball", "Hackeysack", "Other?????"}
 )
 
 func weeklyPoll() string {
-	poll := fmt.Sprintf("📊 *Weekly Poll*\n\nWhat should we do this week?")
+	poll := fmt.Sprintf("@channel: 📊 *Weekly Poll*\n\nWhat sporting event should we do this week???")
 	for _, option := range DefaultPollOptions {
 		if emoji, ok := OptionReactions[option]; ok {
 			poll += fmt.Sprintf("\n:%s: %s", emoji, option)
@@ -36,14 +41,14 @@ func weeklyPoll() string {
 	return poll
 }
 
-// WeeklyPollInstance represents a poll text and the emoji reactions used to seed it.
-type WeeklyPollInstance struct {
+// PollInstance represents a poll's fallback text and the emoji reactions used to seed it.
+type PollInstance struct {
 	Text   string
 	Emojis []string
 }
 
 // GetWeeklyPoll returns a structured weekly poll including the text and emojis.
-func GetWeeklyPoll() WeeklyPollInstance {
+func GetWeeklyPoll() PollInstance {
 	text := weeklyPoll()
 	emojis := make([]string, 0, len(DefaultPollOptions))
 	for _, opt := range DefaultPollOptions {
@@ -53,14 +58,29 @@ func GetWeeklyPoll() WeeklyPollInstance {
 			emojis = append(emojis, strings.ToLower(strings.ReplaceAll(opt, " ", "_")))
 		}
 	}
-	return WeeklyPollInstance{Text: text, Emojis: emojis}
+	return PollInstance{Text: text, Emojis: emojis}
+}
+
+// GetRunoffPoll returns a structured runoff poll including fallback text and emojis for the given options.
+func GetRunoffPoll(options []string) PollInstance {
+	text := "📊 *Runoff Poll*\n@channel: A tie was detected. Vote again for the final winner:"
+	emojis := make([]string, 0, len(options))
+	for _, opt := range options {
+		reaction, ok := OptionReactions[opt]
+		if !ok {
+			reaction = strings.ToLower(strings.ReplaceAll(opt, " ", "_"))
+		}
+		text += fmt.Sprintf("\n:%s: %s", reaction, opt)
+		emojis = append(emojis, reaction)
+	}
+	return PollInstance{Text: text, Emojis: emojis}
 }
 
 // WeeklyPollBlocks returns Block Kit blocks for the weekly poll.
 func WeeklyPollBlocks() []slack.Block {
 	return BuildPollBlocks(
 		"Weekly Poll",
-		"@channel: What should we do this week?\n\nReact with one of the options below:",
+		"@channel: What sporting event should we do this week???\n\nReact with one of the options below:",
 		"weekly",
 		DefaultPollOptions,
 	)

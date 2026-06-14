@@ -193,17 +193,15 @@ func RunoffPoll(api slackclient.API) (string, error) {
 		return "", err
 	}
 
+	instance := poll.GetRunoffPoll(winning)
 	blocks := poll.RunoffPollBlocks(winning)
-	_, timestamp, err = api.PostBlocks("📊 Runoff Poll", blocks...)
+	_, timestamp, err = api.PostBlocks(instance.Text, blocks...)
 	if err != nil {
 		return "", err
 	}
-	for _, option := range winning {
-		reaction, ok := poll.OptionReactions[option]
-		if ok {
-			if err := api.AddReaction(reaction, timestamp); err != nil {
-				slog.Warn("failed to seed runoff reaction", "emoji", reaction, "error", err)
-			}
+	for _, e := range instance.Emojis {
+		if err := api.AddReaction(e, timestamp); err != nil {
+			slog.Warn("failed to seed runoff reaction", "emoji", e, "error", err)
 		}
 	}
 
