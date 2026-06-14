@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/masonite-byte/slack-poll-bot/internal/slackclient"
@@ -61,5 +62,29 @@ func TestRunResultsComputesCounts(t *testing.T) {
 	}
 	if len(m.posted) == 0 {
 		t.Fatalf("expected summary to be posted")
+	}
+}
+
+func TestBuildResultsReportsTopEvent(t *testing.T) {
+	reactions := []slackclient.Reaction{
+		{Name: "+1", Count: 3, Users: []string{"U1", "B0"}},
+		{Name: "tada", Count: 1, Users: []string{"U2"}},
+	}
+
+	result := BuildResults(reactions, "B0")
+	if !strings.Contains(result, "Top event: Option A.") {
+		t.Fatalf("expected top event summary for Option A, got %q", result)
+	}
+}
+
+func TestBuildResultsReportsTie(t *testing.T) {
+	reactions := []slackclient.Reaction{
+		{Name: "+1", Count: 1, Users: []string{"U1"}},
+		{Name: "tada", Count: 1, Users: []string{"U2"}},
+	}
+
+	result := BuildResults(reactions, "B0")
+	if !strings.Contains(result, "It's a tie between Option A and Option B.") {
+		t.Fatalf("expected tie summary for Option A and Option B, got %q", result)
 	}
 }
