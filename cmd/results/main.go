@@ -3,19 +3,26 @@ package main
 import (
 	"log/slog"
 	"os"
+	"time"
 
 	"github.com/masonite-byte/slack-poll-bot/internal/runner"
 	"github.com/masonite-byte/slack-poll-bot/internal/slackclient"
 )
 
 func main() {
-	// Note: `slackclient.Client` stores the configured channel ID on creation.
-	// Use `client.GetReactions(timestamp)` (only timestamp) — do not pass
-	// `os.Getenv("SLACK_CHANNEL_ID")` as the first argument; the client
-	// already knows the channel.
 	client := slackclient.New()
-	if _, err := runner.RunResults(client); err != nil {
-		slog.Error("Error computing results", "error", err)
+	_, isTie, err := runner.RunResults(client)
+	if err != nil {
+		slog.Error("error computing results", "error", err)
 		os.Exit(1)
+	}
+
+	if isTie {
+		slog.Info("tie detected, waiting before posting runoff poll")
+		time.Sleep(5 * time.Minute)
+		if _, err := runner.RunoffPoll(client); err != nil {
+			slog.Error("runoff poll failed", "error", err)
+			os.Exit(1)
+		}
 	}
 }

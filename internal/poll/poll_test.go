@@ -8,7 +8,7 @@ import (
 )
 
 func TestWeeklyPollContainsHeaderAndOptions(t *testing.T) {
-	s := WeeklyPoll()
+	s := weeklyPoll()
 	if !strings.HasPrefix(s, "📊 *Weekly Poll*") {
 		t.Fatalf("WeeklyPoll() missing header; got: %q", s)
 	}
