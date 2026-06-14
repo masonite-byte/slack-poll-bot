@@ -60,7 +60,7 @@ func GetWeeklyPoll() WeeklyPollInstance {
 func WeeklyPollBlocks() []slack.Block {
 	return BuildPollBlocks(
 		"Weekly Poll",
-		"What should we do this week?\n\nReact with one of the options below:",
+		"@channel: What should we do this week?\n\nReact with one of the options below:",
 		"weekly",
 		DefaultPollOptions,
 	)
@@ -70,7 +70,7 @@ func WeeklyPollBlocks() []slack.Block {
 func RunoffPollBlocks(options []string) []slack.Block {
 	return BuildPollBlocks(
 		"Runoff Poll",
-		"A tie was detected. Vote again for the final winner:",
+		"@channel: A tie was detected. Vote again for the final winner:",
 		"runoff",
 		options,
 	)

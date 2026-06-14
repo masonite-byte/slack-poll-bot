@@ -8,6 +8,7 @@ import (
 
 	"github.com/masonite-byte/slack-poll-bot/internal/poll"
 	"github.com/masonite-byte/slack-poll-bot/internal/slackclient"
+	"github.com/slack-go/slack"
 )
 
 type pollResult struct {
@@ -51,10 +52,11 @@ func RunResults(api slackclient.API) (string, bool, error) {
 		return "", false, err
 	}
 
-	message := BuildResults(reactions, botID)
-	_, _, _ = api.PostMessage(message)
-
 	results := tallyResults(reactions, botID)
+	message := BuildResults(reactions, botID)
+	blocks := BuildResultsBlocks(results, message)
+	_, _, _ = api.PostBlocks(message, blocks...)
+
 	maxCount := -1
 	winning := make([]string, 0)
 	for _, result := range results {
@@ -119,6 +121,49 @@ func BuildResults(reactions []slackclient.Reaction, botID string) string {
 	}
 
 	return strings.Join(lines, "\n")
+}
+
+// BuildResultsBlocks returns Block Kit blocks for the results summary, matching the poll message style.
+func BuildResultsBlocks(results []pollResult, fallbackText string) []slack.Block {
+	header := slack.NewSectionBlock(
+		slack.NewTextBlockObject("mrkdwn", "📊 *Final Poll Results Are In!*", false, false),
+		nil, nil,
+	)
+	blocks := []slack.Block{header}
+
+	for _, result := range results {
+		line := fmt.Sprintf(":%s: %s — %d votes", result.Name, result.Label, result.Count)
+		blocks = append(blocks, slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn", line, false, false),
+			nil, nil,
+		))
+	}
+
+	maxCount := -1
+	winning := make([]string, 0)
+	for _, result := range results {
+		if result.Count > maxCount {
+			maxCount = result.Count
+			winning = []string{result.Label}
+		} else if result.Count == maxCount {
+			winning = append(winning, result.Label)
+		}
+	}
+
+	var summary string
+	if maxCount <= 0 {
+		summary = "@channel: No votes have been cast yet."
+	} else if len(winning) == 1 {
+		summary = fmt.Sprintf("@channel: Top event: %s.", winning[0])
+	} else {
+		summary = fmt.Sprintf("@channel: It's a tie between %s.", strings.Join(winning, " and "))
+	}
+	blocks = append(blocks, slack.NewSectionBlock(
+		slack.NewTextBlockObject("mrkdwn", summary, false, false),
+		nil, nil,
+	))
+
+	return blocks
 }
 
 func BuildPollStatusMessage(api slackclient.API) (string, error) {
