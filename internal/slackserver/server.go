@@ -59,20 +59,34 @@ func (s *Server) handleSlash(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if cmd.Command != "/results" {
-		s.writeJSON(w, http.StatusOK, map[string]string{
-			"response_type": "ephemeral",
-			"text":          "Unsupported slash command.",
-		})
-		return
+	var message string
+	var responseErr error
+
+	switch cmd.Command {
+	case "/results", "/recount":
+		message, responseErr = runner.BuildResultsMessage(s.api)
+	case "/pollstatus":
+		message, responseErr = runner.BuildPollStatusMessage(s.api)
+	case "/newpoll":
+		responseErr = runner.RunPostPoll(s.api)
+		message = "New poll posted."
+	case "/runoff":
+		message, responseErr = runner.RunoffPoll(s.api)
+	case "/options":
+		message = runner.BuildOptionsText()
+	case "/vote":
+		message = runner.BuildVoteHelpText()
+	case "/help":
+		message = runner.BuildHelpText()
+	default:
+		message = "Unsupported slash command. Use /help to see available commands."
 	}
 
-	message, err := runner.BuildResultsMessage(s.api)
-	if err != nil {
-		log.Printf("error building slash command results: %v", err)
+	if responseErr != nil {
+		log.Printf("error handling slash command %s: %v", cmd.Command, responseErr)
 		s.writeJSON(w, http.StatusOK, map[string]string{
 			"response_type": "ephemeral",
-			"text":          "Error computing results: " + err.Error(),
+			"text":          "Error: " + responseErr.Error(),
 		})
 		return
 	}
