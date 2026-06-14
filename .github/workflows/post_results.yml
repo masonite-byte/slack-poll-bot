@@ -2,7 +2,8 @@ name: Post Results
 
 on:
   schedule:
-    - cron: "0 22 * * 3" # Wed 10:00 PM UTC
+    - cron: "0 22 * * 3" # Wed 5:00 PM CT (CDT)
+    - cron: "0 23 * * 3" # Wed 5:00 PM CT (CST)
   workflow_dispatch:
 
 jobs:
@@ -14,6 +15,13 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.22"
+
+      - name: Verify CT local time
+        run: |
+          if [ "$(TZ=America/Chicago date +'%u %H')" != "3 17" ]; then
+            echo "Not Wednesday 17:00 CT — skipping job"
+            exit 0
+          fi
 
       - run: go run ./cmd/results
         env:

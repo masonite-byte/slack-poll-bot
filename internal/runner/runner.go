@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/masonite-byte/slack-poll-bot/internal/poll"
 	"github.com/masonite-byte/slack-poll-bot/internal/slackclient"
@@ -33,12 +34,49 @@ func RunPostPoll(api slackclient.API) error {
 
 // RunResults finds the latest poll, computes vote counts (excluding bot), posts the summary, and returns the message.
 func RunResults(api slackclient.API) (string, error) {
-	message, err := BuildResultsMessage(api)
+	// Fetch latest poll and reactions
+	timestamp, err := api.FindLatestPoll()
 	if err != nil {
 		return "", err
 	}
 
+	reactions, err := api.GetReactions(timestamp)
+	if err != nil {
+		return "", err
+	}
+
+	botID, err := api.BotUserID()
+	if err != nil {
+		return "", err
+	}
+
+	// Build and post summary message
+	message := BuildResults(reactions, botID)
 	_, _, _ = api.PostMessage(message)
+
+	// Compute winners to detect ties
+	results := tallyResults(reactions, botID)
+	maxCount := -1
+	winning := make([]string, 0)
+	for _, result := range results {
+		if result.Count > maxCount {
+			maxCount = result.Count
+			winning = []string{result.Label}
+		} else if result.Count == maxCount {
+			winning = append(winning, result.Label)
+		}
+	}
+
+	// If there's a tie between top options, wait 5 minutes and post a runoff poll with tied options
+	if maxCount > 0 && len(winning) > 1 {
+		// delay a few minutes to allow late votes, then trigger runoff
+		time.Sleep(5 * time.Minute)
+		_, err := RunoffPoll(api)
+		if err != nil {
+			return message, err
+		}
+	}
+
 	return message, nil
 }
 
