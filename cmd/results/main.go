@@ -1,7 +1,8 @@
 package main
 
 import (
-	"log"
+	"log/slog"
+	"os"
 
 	"github.com/masonite-byte/slack-poll-bot/internal/runner"
 	"github.com/masonite-byte/slack-poll-bot/internal/slackclient"
@@ -14,6 +15,7 @@ func main() {
 	// already knows the channel.
 	client := slackclient.New()
 	if _, err := runner.RunResults(client); err != nil {
-		log.Fatalf("Error computing results: %v", err)
+		slog.Error("Error computing results", "error", err)
+		os.Exit(1)
 	}
 }

@@ -2,7 +2,7 @@ package slackclient
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"strings"
 
@@ -37,7 +37,8 @@ func New() *Client {
 	token := os.Getenv("SLACK_BOT_TOKEN")
 	channel := os.Getenv("SLACK_CHANNEL_ID")
 	if token == "" || channel == "" {
-		log.Fatalf("missing required env vars: SLACK_BOT_TOKEN and SLACK_CHANNEL_ID must be set")
+		slog.Error("missing required env vars", "SLACK_BOT_TOKEN_set", token != "", "SLACK_CHANNEL_ID_set", channel != "")
+		os.Exit(1)
 	}
 
 	return &Client{

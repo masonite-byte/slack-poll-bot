@@ -1,7 +1,8 @@
 package main
 
 import (
-	"log"
+	"log/slog"
+	"os"
 
 	"github.com/masonite-byte/slack-poll-bot/internal/runner"
 	"github.com/masonite-byte/slack-poll-bot/internal/slackclient"
@@ -10,6 +11,7 @@ import (
 func main() {
 	client := slackclient.New()
 	if err := runner.RunPostPoll(client); err != nil {
-		log.Fatalf("Error posting poll: %v", err)
+		slog.Error("Error posting poll", "error", err)
+		os.Exit(1)
 	}
 }

@@ -18,15 +18,14 @@ type pollResult struct {
 
 // RunPostPoll posts the poll and seeds initial reactions using the provided API.
 func RunPostPoll(api slackclient.API) error {
-	msg := poll.WeeklyPoll()
+	instance := poll.GetWeeklyPoll()
 	blocks := poll.WeeklyPollBlocks()
-	_, timestamp, err := api.PostBlocks(msg, blocks...)
+	_, timestamp, err := api.PostBlocks(instance.Text, blocks...)
 	if err != nil {
 		return err
 	}
 
-	emojis := []string{poll.OptionReactions["Option A"], poll.OptionReactions["Option B"], poll.OptionReactions["Option C"]}
-	for _, e := range emojis {
+	for _, e := range instance.Emojis {
 		_ = api.AddReaction(e, timestamp)
 	}
 	return nil

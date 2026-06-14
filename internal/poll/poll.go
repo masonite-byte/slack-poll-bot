@@ -31,6 +31,26 @@ func WeeklyPoll() string {
 	)
 }
 
+// WeeklyPollInstance represents a poll text and the emoji reactions used to seed it.
+type WeeklyPollInstance struct {
+	Text   string
+	Emojis []string
+}
+
+// GetWeeklyPoll returns a structured weekly poll including the text and emojis.
+func GetWeeklyPoll() WeeklyPollInstance {
+	text := WeeklyPoll()
+	emojis := make([]string, 0, len(DefaultPollOptions))
+	for _, opt := range DefaultPollOptions {
+		if r, ok := OptionReactions[opt]; ok {
+			emojis = append(emojis, r)
+		} else {
+			emojis = append(emojis, strings.ToLower(strings.ReplaceAll(opt, " ", "_")))
+		}
+	}
+	return WeeklyPollInstance{Text: text, Emojis: emojis}
+}
+
 // WeeklyPollBlocks returns Block Kit blocks for the weekly poll.
 func WeeklyPollBlocks() []slack.Block {
 	return BuildPollBlocks(
