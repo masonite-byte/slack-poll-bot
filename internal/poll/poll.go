@@ -24,11 +24,8 @@ var (
 	DefaultPollOptions = []string{"Option A", "Option B", "Option C"}
 )
 
-// WeeklyPoll returns the raw text formatting for the weekly poll question.
-func WeeklyPoll() string {
-	return fmt.Sprintf(
-		"📊 *Weekly Poll*\n\nWhat should we do this week?\n\n👍 Option A\n🎉 Option B\n🚀 Option C\n",
-	)
+func weeklyPoll() string {
+	return "📊 *Weekly Poll*\n\nWhat should we do this week?\n\n👍 Option A\n🎉 Option B\n🚀 Option C\n"
 }
 
 // WeeklyPollInstance represents a poll text and the emoji reactions used to seed it.
@@ -39,7 +36,7 @@ type WeeklyPollInstance struct {
 
 // GetWeeklyPoll returns a structured weekly poll including the text and emojis.
 func GetWeeklyPoll() WeeklyPollInstance {
-	text := WeeklyPoll()
+	text := weeklyPoll()
 	emojis := make([]string, 0, len(DefaultPollOptions))
 	for _, opt := range DefaultPollOptions {
 		if r, ok := OptionReactions[opt]; ok {

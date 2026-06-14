@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 
 	"github.com/masonite-byte/slack-poll-bot/internal/runner"
@@ -83,7 +83,7 @@ func (s *Server) handleSlash(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if responseErr != nil {
-		log.Printf("error handling slash command %s: %v", cmd.Command, responseErr)
+		slog.Error("slash command failed", "command", cmd.Command, "error", responseErr)
 		s.writeJSON(w, http.StatusOK, map[string]string{
 			"response_type": "ephemeral",
 			"text":          "Error: " + responseErr.Error(),

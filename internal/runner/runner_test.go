@@ -53,7 +53,7 @@ func TestRunResultsComputesCounts(t *testing.T) {
 		{Name: "tada", Count: 1, Users: []string{"U2"}},
 	}}
 
-	out, err := RunResults(m)
+	out, isTie, err := RunResults(m)
 	if err != nil {
 		t.Fatalf("RunResults error: %v", err)
 	}
@@ -62,6 +62,9 @@ func TestRunResultsComputesCounts(t *testing.T) {
 	}
 	if len(m.posted) == 0 {
 		t.Fatalf("expected summary to be posted")
+	}
+	if !isTie {
+		t.Fatalf("expected tie to be detected (thumbsup=1 vs tada=1 after deducting bot)")
 	}
 }
 

@@ -2,9 +2,9 @@ package runner
 
 import (
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/masonite-byte/slack-poll-bot/internal/poll"
 	"github.com/masonite-byte/slack-poll-bot/internal/slackclient"
@@ -26,34 +26,34 @@ func RunPostPoll(api slackclient.API) error {
 	}
 
 	for _, e := range instance.Emojis {
-		_ = api.AddReaction(e, timestamp)
+		if err := api.AddReaction(e, timestamp); err != nil {
+			slog.Warn("failed to seed reaction", "emoji", e, "error", err)
+		}
 	}
 	return nil
 }
 
-// RunResults finds the latest poll, computes vote counts (excluding bot), posts the summary, and returns the message.
-func RunResults(api slackclient.API) (string, error) {
-	// Fetch latest poll and reactions
+// RunResults finds the latest poll, computes vote counts (excluding bot), posts the summary,
+// and returns the message and whether the top options are tied.
+func RunResults(api slackclient.API) (string, bool, error) {
 	timestamp, err := api.FindLatestPoll()
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 
 	reactions, err := api.GetReactions(timestamp)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 
 	botID, err := api.BotUserID()
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 
-	// Build and post summary message
 	message := BuildResults(reactions, botID)
 	_, _, _ = api.PostMessage(message)
 
-	// Compute winners to detect ties
 	results := tallyResults(reactions, botID)
 	maxCount := -1
 	winning := make([]string, 0)
@@ -66,17 +66,8 @@ func RunResults(api slackclient.API) (string, error) {
 		}
 	}
 
-	// If there's a tie between top options, wait 5 minutes and post a runoff poll with tied options
-	if maxCount > 0 && len(winning) > 1 {
-		// delay a few minutes to allow late votes, then trigger runoff
-		time.Sleep(5 * time.Minute)
-		_, err := RunoffPoll(api)
-		if err != nil {
-			return message, err
-		}
-	}
-
-	return message, nil
+	isTie := maxCount > 0 && len(winning) > 1
+	return message, isTie, nil
 }
 
 // BuildResultsMessage computes the results summary from Slack and returns the final text.
@@ -198,7 +189,9 @@ func RunoffPoll(api slackclient.API) (string, error) {
 	for _, option := range winning {
 		reaction, ok := poll.OptionReactions[option]
 		if ok {
-			_ = api.AddReaction(reaction, timestamp)
+			if err := api.AddReaction(reaction, timestamp); err != nil {
+				slog.Warn("failed to seed runoff reaction", "emoji", reaction, "error", err)
+			}
 		}
 	}
 

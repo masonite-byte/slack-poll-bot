@@ -131,44 +131,38 @@ func (c *Client) FindLatestPoll() (string, error) {
 	return "", fmt.Errorf("no recent poll found in the last %d pages", maxPages)
 }
 
+const weeklyPollMarker = "poll_marker:weekly"
+
 func containsPollMarker(msg slack.Message) bool {
 	if msg.Blocks.BlockSet == nil {
 		return false
 	}
 
 	for _, block := range msg.Blocks.BlockSet {
-		switch ctx := block.(type) {
+		var ctx *slack.ContextBlock
+		switch b := block.(type) {
 		case *slack.ContextBlock:
-			if ctx.BlockID != "poll_marker" {
-				continue
-			}
-			for _, element := range ctx.ContextElements.Elements {
-				switch textElem := element.(type) {
-				case *slack.TextBlockObject:
-					if strings.Contains(textElem.Text, "poll_marker:weekly") {
-						return true
-					}
-				case slack.TextBlockObject:
-					if strings.Contains(textElem.Text, "poll_marker:weekly") {
-						return true
-					}
-				}
-			}
+			ctx = b
 		case slack.ContextBlock:
-			if ctx.BlockID != "poll_marker" {
-				continue
+			ctx = &b
+		default:
+			continue
+		}
+
+		if ctx.BlockID != "poll_marker" {
+			continue
+		}
+
+		for _, element := range ctx.ContextElements.Elements {
+			var text string
+			switch e := element.(type) {
+			case *slack.TextBlockObject:
+				text = e.Text
+			case slack.TextBlockObject:
+				text = e.Text
 			}
-			for _, element := range ctx.ContextElements.Elements {
-				switch textElem := element.(type) {
-				case *slack.TextBlockObject:
-					if strings.Contains(textElem.Text, "poll_marker:weekly") {
-						return true
-					}
-				case slack.TextBlockObject:
-					if strings.Contains(textElem.Text, "poll_marker:weekly") {
-						return true
-					}
-				}
+			if strings.Contains(text, weeklyPollMarker) {
+				return true
 			}
 		}
 	}
@@ -176,7 +170,6 @@ func containsPollMarker(msg slack.Message) bool {
 	return false
 }
 
-// Helper function to verify if the message text matches our specific poll signature
 func containsPollHeader(text string) bool {
 	return strings.HasPrefix(text, "📊 *Weekly Poll*")
 }
