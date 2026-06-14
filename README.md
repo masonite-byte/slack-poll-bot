@@ -17,10 +17,10 @@ Automated stateless Slack poll system using Go + GitHub Actions.
 	- `reactions:read`
 	- `channels:history`
 3. Install the application to your target workspace and copy the generated token string (`xoxb-...`).
-4. Inject your environment values into your GitHub Repository under **Settings > Secrets and variables > Actions**:
-	- `SLACK_BOT_TOKEN`
-	- `SLACK_CHANNEL_ID`
-	- `SLACK_SIGNING_SECRET`
+4. Inject your environment values into your GitHub Repository under **Settings > Secrets and variables > Actions** or into a local `.env` file:
+   - `SLACK_BOT_TOKEN` (bot token, e.g. `xoxb-...`)
+   - `SLACK_CHANNEL_ID` (channel ID where polls are posted)
+   - `SLACK_SIGNING_SECRET` (for verifying slash command requests)
 
 ## Local Execution
 
@@ -34,6 +34,14 @@ go run ./cmd/postpoll
 go run ./cmd/results
 
 # Run the slash command server for /results
+go run ./cmd/server
+```
+
+Example (use `direnv` or `source .env` to load local env vars):
+
+```bash
+cp .env.example .env
+export $(cat .env | xargs)
 go run ./cmd/server
 ```
 
@@ -51,5 +59,26 @@ go run ./cmd/server
    - `/vote` - show voting instructions.
    - `/help` - show this help text.
 4. When a supported command is invoked, the bot responds ephemerally and may also post or update poll content in the channel.
+   
+## Testing
+
+- Run the unit test suite:
+
+```bash
+go test ./...
+```
+
+The repository includes regression tests for poll generation, slash command handling, and result tallying (see recent PRs).
+
+## Changelog / Recent PRs
+
+- PR #14: Add polling regression tests and slash command coverage (merged)
+- PR #15: docs: clarify GetReactions usage in cmd/results (open)
+
+## Development Notes
+
+- `slackclient.New()` reads `SLACK_BOT_TOKEN` and `SLACK_CHANNEL_ID` and stores them on the client. Call `GetReactions(timestamp)` with only the message timestamp; do not pass the channel ID again.
+- To post a poll locally, run `go run ./cmd/postpoll` (requires `SLACK_BOT_TOKEN` and `SLACK_CHANNEL_ID`).
+
 # slack-poll-bot
 A very scrumtilidicious solution to remove a little responsibility from humans via enslaving robots. (In other words: Automated Slack polling bot using Go and GitHub Actions)
