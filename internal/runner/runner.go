@@ -53,21 +53,13 @@ func RunResults(api slackclient.API) (string, bool, error) {
 	}
 
 	results := tallyResults(reactions, botID)
-	message := BuildResults(reactions, botID)
-	blocks := BuildResultsBlocks(results, message)
-	_, _, _ = api.PostBlocks(message, blocks...)
-
-	maxCount := -1
-	winning := make([]string, 0)
-	for _, result := range results {
-		if result.Count > maxCount {
-			maxCount = result.Count
-			winning = []string{result.Label}
-		} else if result.Count == maxCount {
-			winning = append(winning, result.Label)
-		}
+	message := BuildResults(results)
+	blocks := BuildResultsBlocks(results)
+	if _, _, err := api.PostBlocks(message, blocks...); err != nil {
+		slog.Error("failed to post results", "error", err)
 	}
 
+	maxCount, winning := findWinners(results)
 	isTie := maxCount > 0 && len(winning) > 1
 	return message, isTie, nil
 }
@@ -89,28 +81,17 @@ func BuildResultsMessage(api slackclient.API) (string, error) {
 		return "", err
 	}
 
-	return BuildResults(reactions, botID), nil
+	return BuildResults(tallyResults(reactions, botID)), nil
 }
 
 // BuildResults generates a text report and appends the highest-voted event or tie summary.
-func BuildResults(reactions []slackclient.Reaction, botID string) string {
-	results := tallyResults(reactions, botID)
-
+func BuildResults(results []pollResult) string {
 	lines := []string{"📊 *Final Poll Results Are In!*"}
 	for _, result := range results {
 		lines = append(lines, fmt.Sprintf(":%s: %s received %d votes", result.Name, result.Label, result.Count))
 	}
 
-	maxCount := -1
-	winning := make([]string, 0)
-	for _, result := range results {
-		if result.Count > maxCount {
-			maxCount = result.Count
-			winning = []string{result.Label}
-		} else if result.Count == maxCount {
-			winning = append(winning, result.Label)
-		}
-	}
+	maxCount, winning := findWinners(results)
 
 	if maxCount <= 0 {
 		lines = append(lines, "No votes have been cast yet.")
@@ -124,7 +105,7 @@ func BuildResults(reactions []slackclient.Reaction, botID string) string {
 }
 
 // BuildResultsBlocks returns Block Kit blocks for the results summary, matching the poll message style.
-func BuildResultsBlocks(results []pollResult, fallbackText string) []slack.Block {
+func BuildResultsBlocks(results []pollResult) []slack.Block {
 	header := slack.NewSectionBlock(
 		slack.NewTextBlockObject("mrkdwn", "📊 *Final Poll Results Are In!*", false, false),
 		nil, nil,
@@ -139,16 +120,7 @@ func BuildResultsBlocks(results []pollResult, fallbackText string) []slack.Block
 		))
 	}
 
-	maxCount := -1
-	winning := make([]string, 0)
-	for _, result := range results {
-		if result.Count > maxCount {
-			maxCount = result.Count
-			winning = []string{result.Label}
-		} else if result.Count == maxCount {
-			winning = append(winning, result.Label)
-		}
-	}
+	maxCount, winning := findWinners(results)
 
 	var summary string
 	if maxCount <= 0 {
@@ -182,7 +154,7 @@ func BuildPollStatusMessage(api slackclient.API) (string, error) {
 		return "", err
 	}
 
-	summary := BuildResults(reactions, botID)
+	summary := BuildResults(tallyResults(reactions, botID))
 	return fmt.Sprintf("Current poll status (posted at %s):\n%s", timestamp, summary), nil
 }
 
@@ -207,16 +179,7 @@ func RunoffPoll(api slackclient.API) (string, error) {
 		return "No votes have been cast yet. Runoff requires at least one vote.", nil
 	}
 
-	maxCount := -1
-	winning := make([]string, 0)
-	for _, result := range results {
-		if result.Count > maxCount {
-			maxCount = result.Count
-			winning = []string{result.Label}
-		} else if result.Count == maxCount {
-			winning = append(winning, result.Label)
-		}
-	}
+	maxCount, winning := findWinners(results)
 
 	if maxCount <= 0 {
 		return "No votes have been cast yet. Runoff requires at least one vote.", nil
@@ -271,6 +234,20 @@ func BuildVoteHelpText() string {
 		poll.PollOptionsText(),
 		"Use /results to check the current tally.",
 	}, "\n")
+}
+
+func findWinners(results []pollResult) (int, []string) {
+	maxCount := -1
+	winning := make([]string, 0)
+	for _, result := range results {
+		if result.Count > maxCount {
+			maxCount = result.Count
+			winning = []string{result.Label}
+		} else if result.Count == maxCount {
+			winning = append(winning, result.Label)
+		}
+	}
+	return maxCount, winning
 }
 
 func tallyResults(reactions []slackclient.Reaction, botID string) []pollResult {

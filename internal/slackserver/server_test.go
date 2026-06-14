@@ -16,35 +16,13 @@ import (
 	"time"
 
 	"github.com/masonite-byte/slack-poll-bot/internal/slackclient"
-	"github.com/slack-go/slack"
+	"github.com/masonite-byte/slack-poll-bot/internal/testutil"
 )
 
-type mockAPI struct {
-	reactions []slackclient.Reaction
-	botID     string
-}
-
-func (m *mockAPI) PostMessage(text string) (string, string, error) {
-	return "C", "123", nil
-}
-func (m *mockAPI) PostBlocks(text string, blocks ...slack.Block) (string, string, error) {
-	return "C", "123", nil
-}
-func (m *mockAPI) AddReaction(name, timestamp string) error {
-	return nil
-}
-func (m *mockAPI) GetReactions(timestamp string) ([]slackclient.Reaction, error) {
-	return m.reactions, nil
-}
-func (m *mockAPI) FindLatestPoll() (string, error)              { return "123", nil }
-func (m *mockAPI) BotUserID() (string, error)                   { return m.botID, nil }
-func (m *mockAPI) ChannelID() string                            { return "C" }
-func (m *mockAPI) DeleteMessage(channelID, timestamp string) error { return nil }
-
 func TestSlashCommandResultsResponse(t *testing.T) {
-	api := &mockAPI{
-		reactions: []slackclient.Reaction{{Name: "thumbsup", Count: 1, Users: []string{"U1"}}},
-		botID:     "B0",
+	api := &testutil.MockAPI{
+		Reactions: []slackclient.Reaction{{Name: "thumbsup", Count: 1, Users: []string{"U1"}}},
+		BotID:     "B0",
 	}
 	server := New(api, "test-secret")
 
@@ -77,7 +55,7 @@ func TestSlashCommandResultsResponse(t *testing.T) {
 }
 
 func TestSlashCommandHelpResponse(t *testing.T) {
-	server := New(&mockAPI{}, "test-secret")
+	server := New(&testutil.MockAPI{}, "test-secret")
 	form := url.Values{}
 	form.Set("command", "/help")
 
@@ -103,7 +81,7 @@ func TestSlashCommandHelpResponse(t *testing.T) {
 }
 
 func TestSlashCommandOptionsResponse(t *testing.T) {
-	server := New(&mockAPI{}, "test-secret")
+	server := New(&testutil.MockAPI{}, "test-secret")
 	form := url.Values{}
 	form.Set("command", "/options")
 
@@ -129,7 +107,7 @@ func TestSlashCommandOptionsResponse(t *testing.T) {
 }
 
 func TestSlashCommandNewPollResponse(t *testing.T) {
-	server := New(&mockAPI{}, "test-secret")
+	server := New(&testutil.MockAPI{}, "test-secret")
 	form := url.Values{}
 	form.Set("command", "/newpoll")
 
@@ -155,12 +133,12 @@ func TestSlashCommandNewPollResponse(t *testing.T) {
 }
 
 func TestSlashCommandRunoffResponse(t *testing.T) {
-	api := &mockAPI{
-		reactions: []slackclient.Reaction{
+	api := &testutil.MockAPI{
+		Reactions: []slackclient.Reaction{
 			{Name: "thumbsup", Count: 2, Users: []string{"U1"}},
 			{Name: "tada", Count: 2, Users: []string{"U2"}},
 		},
-		botID: "B0",
+		BotID: "B0",
 	}
 	server := New(api, "test-secret")
 	form := url.Values{}
@@ -188,7 +166,7 @@ func TestSlashCommandRunoffResponse(t *testing.T) {
 }
 
 func TestSlashCommandUnsupportedResponse(t *testing.T) {
-	server := New(&mockAPI{}, "test-secret")
+	server := New(&testutil.MockAPI{}, "test-secret")
 	form := url.Values{}
 	form.Set("command", "/unknown")
 
@@ -214,7 +192,7 @@ func TestSlashCommandUnsupportedResponse(t *testing.T) {
 }
 
 func TestSlashCommandInvalidSignature(t *testing.T) {
-	server := New(&mockAPI{}, "test-secret")
+	server := New(&testutil.MockAPI{}, "test-secret")
 	form := url.Values{}
 	form.Set("command", "/help")
 
