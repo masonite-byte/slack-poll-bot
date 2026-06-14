@@ -5,11 +5,13 @@ import (
 	"os"
 	"time"
 
+	"github.com/joho/godotenv"
 	"github.com/masonite-byte/slack-poll-bot/internal/runner"
 	"github.com/masonite-byte/slack-poll-bot/internal/slackclient"
 )
 
 func main() {
+	_ = godotenv.Load()
 	client := slackclient.New()
 	_, isTie, err := runner.RunResults(client)
 	if err != nil {
