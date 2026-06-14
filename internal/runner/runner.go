@@ -11,7 +11,8 @@ import (
 // RunPostPoll posts the poll and seeds initial reactions using the provided API.
 func RunPostPoll(api slackclient.API) error {
 	msg := poll.WeeklyPoll()
-	_, timestamp, err := api.PostMessage(msg)
+	blocks := poll.WeeklyPollBlocks()
+	_, timestamp, err := api.PostBlocks(msg, blocks...)
 	if err != nil {
 		return err
 	}

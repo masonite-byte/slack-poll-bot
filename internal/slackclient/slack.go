@@ -25,6 +25,7 @@ type Reaction struct {
 // API defines the subset of Slack operations used by the application.
 type API interface {
 	PostMessage(text string) (string, string, error)
+	PostBlocks(text string, blocks ...slack.Block) (string, string, error)
 	AddReaction(name, timestamp string) error
 	GetReactions(timestamp string) ([]Reaction, error)
 	FindLatestPoll() (string, error)
@@ -50,6 +51,15 @@ func (c *Client) PostMessage(text string) (string, string, error) {
 	return c.api.PostMessage(
 		c.channelID,
 		slack.MsgOptionText(text, false),
+	)
+}
+
+// PostBlocks sends a Block Kit message with fallback text to the configured channel
+func (c *Client) PostBlocks(text string, blocks ...slack.Block) (string, string, error) {
+	return c.api.PostMessage(
+		c.channelID,
+		slack.MsgOptionText(text, false),
+		slack.MsgOptionBlocks(blocks...),
 	)
 }
 
@@ -105,7 +115,7 @@ func (c *Client) FindLatestPoll() (string, error) {
 		}
 
 		for _, msg := range history.Messages {
-			if containsPollHeader(msg.Text) {
+			if containsPollMarker(msg) || containsPollHeader(msg.Text) {
 				return msg.Timestamp, nil
 			}
 		}
@@ -118,6 +128,51 @@ func (c *Client) FindLatestPoll() (string, error) {
 	}
 
 	return "", fmt.Errorf("no recent poll found in the last %d pages", maxPages)
+}
+
+func containsPollMarker(msg slack.Message) bool {
+	if msg.Blocks.BlockSet == nil {
+		return false
+	}
+
+	for _, block := range msg.Blocks.BlockSet {
+		switch ctx := block.(type) {
+		case *slack.ContextBlock:
+			if ctx.BlockID != "poll_marker" {
+				continue
+			}
+			for _, element := range ctx.ContextElements.Elements {
+				switch textElem := element.(type) {
+				case *slack.TextBlockObject:
+					if strings.Contains(textElem.Text, "poll_marker:weekly") {
+						return true
+					}
+				case slack.TextBlockObject:
+					if strings.Contains(textElem.Text, "poll_marker:weekly") {
+						return true
+					}
+				}
+			}
+		case slack.ContextBlock:
+			if ctx.BlockID != "poll_marker" {
+				continue
+			}
+			for _, element := range ctx.ContextElements.Elements {
+				switch textElem := element.(type) {
+				case *slack.TextBlockObject:
+					if strings.Contains(textElem.Text, "poll_marker:weekly") {
+						return true
+					}
+				case slack.TextBlockObject:
+					if strings.Contains(textElem.Text, "poll_marker:weekly") {
+						return true
+					}
+				}
+			}
+		}
+	}
+
+	return false
 }
 
 // Helper function to verify if the message text matches our specific poll signature
