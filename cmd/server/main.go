@@ -1,7 +1,7 @@
 package main
 
 import (
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 
@@ -14,7 +14,8 @@ func main() {
 	_ = godotenv.Load()
 	signingSecret := os.Getenv("SLACK_SIGNING_SECRET")
 	if signingSecret == "" {
-		log.Fatal("missing required env var: SLACK_SIGNING_SECRET")
+		slog.Error("missing required env var: SLACK_SIGNING_SECRET")
+		os.Exit(1)
 	}
 
 	client := slackclient.New()
@@ -26,6 +27,9 @@ func main() {
 	}
 
 	http.Handle("/slack/commands", server.Handler())
-	log.Printf("starting Slack command server on :%s", port)
-	log.Fatal(http.ListenAndServe(":"+port, nil))
+	slog.Info("starting Slack command server", "port", port)
+	if err := http.ListenAndServe(":"+port, nil); err != nil {
+		slog.Error("server failed", "error", err)
+		os.Exit(1)
+	}
 }
