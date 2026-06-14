@@ -179,13 +179,17 @@ func RunoffPoll(api slackclient.API) (string, error) {
 	if len(winning) < 2 {
 		return fmt.Sprintf("No runoff required. Current leader is %s.", winning[0]), nil
 	}
+	channelID := api.ChannelID()
+	err = api.DeleteMessage(channelID, timestamp) // delete past poll to prevent confusion
+	if err != nil {
+		return "", err
+	}
 
 	blocks := poll.RunoffPollBlocks(winning)
 	_, timestamp, err = api.PostBlocks("📊 Runoff Poll", blocks...)
 	if err != nil {
 		return "", err
 	}
-
 	for _, option := range winning {
 		reaction, ok := poll.OptionReactions[option]
 		if ok {

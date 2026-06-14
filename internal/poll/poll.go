@@ -25,7 +25,15 @@ var (
 )
 
 func weeklyPoll() string {
-	return "📊 *Weekly Poll*\n\nWhat should we do this week?\n\n👍 Option A\n🎉 Option B\n🚀 Option C\n"
+	poll := fmt.Sprintf("📊 *Weekly Poll*\n\nWhat should we do this week?")
+	for _, option := range DefaultPollOptions {
+		if emoji, ok := OptionReactions[option]; ok {
+			poll += fmt.Sprintf("\n:%s: %s", emoji, option)
+		} else {
+			poll += fmt.Sprintf("\n Error generating this option: %s", option)
+		}
+	}
+	return poll
 }
 
 // WeeklyPollInstance represents a poll text and the emoji reactions used to seed it.

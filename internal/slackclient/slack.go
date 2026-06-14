@@ -30,6 +30,8 @@ type API interface {
 	GetReactions(timestamp string) ([]Reaction, error)
 	FindLatestPoll() (string, error)
 	BotUserID() (string, error)
+	ChannelID() string
+	DeleteMessage(channelID, timestamp string) error
 }
 
 // New initializes the Slack client using environment variables and validates them
@@ -99,6 +101,17 @@ func (c *Client) BotUserID() (string, error) {
 	}
 	c.botUserID = auth.UserID
 	return c.botUserID, nil
+}
+
+// ChannelID returns the configured Slack channel ID.
+func (c *Client) ChannelID() string {
+	return c.channelID
+}
+
+// DeleteMessage deletes a message from the given channel by timestamp.
+func (c *Client) DeleteMessage(channelID, timestamp string) error {
+	_, _, err := c.api.DeleteMessage(channelID, timestamp)
+	return err
 }
 
 // FindLatestPoll scans channel history using pagination until it finds the last poll message

@@ -1,0 +1,30 @@
+name: Check Poll Ties
+
+on:
+  schedule:
+    - cron: "0 22 * * 2" # Tue 5:00 PM CDT
+    - cron: "0 23 * * 2" # Tue 5:00 PM CST
+  workflow_dispatch:
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Verify CT local time
+        run: |
+          if [ "$(TZ=America/Chicago date +'%u %H')" != "2 17" ]; then
+            echo "Not Tuesday 5:00 PM CT — skipping job"
+            exit 0
+          fi
+
+      - run: go run ./cmd/checkties
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}

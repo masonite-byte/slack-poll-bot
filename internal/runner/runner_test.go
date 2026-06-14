@@ -31,8 +31,10 @@ func (m *mockAPI) AddReaction(name, timestamp string) error {
 func (m *mockAPI) GetReactions(timestamp string) ([]slackclient.Reaction, error) {
 	return m.reactions, nil
 }
-func (m *mockAPI) FindLatestPoll() (string, error) { return m.ts, nil }
-func (m *mockAPI) BotUserID() (string, error)      { return m.botID, nil }
+func (m *mockAPI) FindLatestPoll() (string, error)              { return m.ts, nil }
+func (m *mockAPI) BotUserID() (string, error)                   { return m.botID, nil }
+func (m *mockAPI) ChannelID() string                            { return "C" }
+func (m *mockAPI) DeleteMessage(channelID, timestamp string) error { return nil }
 
 func TestRunPostPollSeedsReactions(t *testing.T) {
 	m := &mockAPI{ts: "123"}
