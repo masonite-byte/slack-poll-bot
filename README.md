@@ -39,9 +39,17 @@ go run ./cmd/server
 
 ## Slack Slash Command Setup
 
-1. In your Slack app, create a slash command named `/results`.
-2. Set the Request URL to your server endpoint, for example `https://<host>/slack/commands`.
-3. Use `SLACK_SIGNING_SECRET` from your Slack app to validate requests.
-4. When `/results` is invoked, the bot will compute current scores and return a message with the top event or a tie summary.
+1. In your Slack app, create a slash command with the Request URL set to your server endpoint, for example `https://<host>/slack/commands`.
+2. Use `SLACK_SIGNING_SECRET` from your Slack app to validate requests.
+3. The bot supports these commands:
+   - `/results` - show the current poll results.
+   - `/recount` - rerun the current poll tally.
+   - `/pollstatus` - show the current poll status and counts.
+   - `/newpoll` - post a new poll message.
+   - `/runoff` - start a runoff poll when the latest poll is tied.
+   - `/options` - list poll options and emoji.
+   - `/vote` - show voting instructions.
+   - `/help` - show this help text.
+4. When a supported command is invoked, the bot responds ephemerally and may also post or update poll content in the channel.
 # slack-poll-bot
 A very scrumtilidicious solution to remove a little responsibility from humans via enslaving robots. (In other words: Automated Slack polling bot using Go and GitHub Actions)

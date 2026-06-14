@@ -74,6 +74,117 @@ func TestSlashCommandResultsResponse(t *testing.T) {
 	}
 }
 
+func TestSlashCommandHelpResponse(t *testing.T) {
+	server := New(&mockAPI{}, "test-secret")
+	form := url.Values{}
+	form.Set("command", "/help")
+
+	req := httptest.NewRequest(http.MethodPost, "/slack/commands", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	addSlackSignature(t, req, "test-secret")
+
+	rr := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 response, got %d", rr.Code)
+	}
+
+	var payload map[string]string
+	if err := json.NewDecoder(rr.Body).Decode(&payload); err != nil {
+		t.Fatalf("failed to decode response JSON: %v", err)
+	}
+
+	if !strings.Contains(payload["text"], "Supported slash commands") {
+		t.Fatalf("unexpected help response text: %q", payload["text"])
+	}
+}
+
+func TestSlashCommandOptionsResponse(t *testing.T) {
+	server := New(&mockAPI{}, "test-secret")
+	form := url.Values{}
+	form.Set("command", "/options")
+
+	req := httptest.NewRequest(http.MethodPost, "/slack/commands", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	addSlackSignature(t, req, "test-secret")
+
+	rr := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 response, got %d", rr.Code)
+	}
+
+	var payload map[string]string
+	if err := json.NewDecoder(rr.Body).Decode(&payload); err != nil {
+		t.Fatalf("failed to decode response JSON: %v", err)
+	}
+
+	if !strings.Contains(payload["text"], "Available poll options") {
+		t.Fatalf("unexpected options response text: %q", payload["text"])
+	}
+}
+
+func TestSlashCommandNewPollResponse(t *testing.T) {
+	server := New(&mockAPI{}, "test-secret")
+	form := url.Values{}
+	form.Set("command", "/newpoll")
+
+	req := httptest.NewRequest(http.MethodPost, "/slack/commands", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	addSlackSignature(t, req, "test-secret")
+
+	rr := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 response, got %d", rr.Code)
+	}
+
+	var payload map[string]string
+	if err := json.NewDecoder(rr.Body).Decode(&payload); err != nil {
+		t.Fatalf("failed to decode response JSON: %v", err)
+	}
+
+	if !strings.Contains(payload["text"], "New poll posted") {
+		t.Fatalf("unexpected newpoll response text: %q", payload["text"])
+	}
+}
+
+func TestSlashCommandRunoffResponse(t *testing.T) {
+	api := &mockAPI{
+		reactions: []slackclient.Reaction{
+			{Name: "thumbsup", Count: 2, Users: []string{"U1"}},
+			{Name: "tada", Count: 2, Users: []string{"U2"}},
+		},
+		botID: "B0",
+	}
+	server := New(api, "test-secret")
+	form := url.Values{}
+	form.Set("command", "/runoff")
+
+	req := httptest.NewRequest(http.MethodPost, "/slack/commands", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	addSlackSignature(t, req, "test-secret")
+
+	rr := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 response, got %d", rr.Code)
+	}
+
+	var payload map[string]string
+	if err := json.NewDecoder(rr.Body).Decode(&payload); err != nil {
+		t.Fatalf("failed to decode response JSON: %v", err)
+	}
+
+	if !strings.Contains(payload["text"], "Runoff poll posted") {
+		t.Fatalf("unexpected runoff response text: %q", payload["text"])
+	}
+}
+
 func addSlackSignature(t *testing.T, req *http.Request, secret string) {
 	t.Helper()
 	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
