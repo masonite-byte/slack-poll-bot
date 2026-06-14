@@ -185,6 +185,52 @@ func TestSlashCommandRunoffResponse(t *testing.T) {
 	}
 }
 
+func TestSlashCommandUnsupportedResponse(t *testing.T) {
+	server := New(&mockAPI{}, "test-secret")
+	form := url.Values{}
+	form.Set("command", "/unknown")
+
+	req := httptest.NewRequest(http.MethodPost, "/slack/commands", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	addSlackSignature(t, req, "test-secret")
+
+	rr := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 response, got %d", rr.Code)
+	}
+
+	var payload map[string]string
+	if err := json.NewDecoder(rr.Body).Decode(&payload); err != nil {
+		t.Fatalf("failed to decode response JSON: %v", err)
+	}
+
+	if !strings.Contains(payload["text"], "Unsupported slash command") {
+		t.Fatalf("unexpected unsupported command response text: %q", payload["text"])
+	}
+}
+
+func TestSlashCommandInvalidSignature(t *testing.T) {
+	server := New(&mockAPI{}, "test-secret")
+	form := url.Values{}
+	form.Set("command", "/help")
+
+	req := httptest.NewRequest(http.MethodPost, "/slack/commands", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	addSlackSignature(t, req, "wrong-secret")
+
+	rr := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 response, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "invalid signature") {
+		t.Fatalf("expected invalid signature error body, got %q", rr.Body.String())
+	}
+}
+
 func addSlackSignature(t *testing.T, req *http.Request, secret string) {
 	t.Helper()
 	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
