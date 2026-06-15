@@ -17,4 +17,9 @@ func main() {
 		slog.Error("error computing results", "error", err)
 		os.Exit(1)
 	}
+
+	if err := runner.NotifyVoters(client); err != nil {
+		slog.Error("error notifying voters", "error", err)
+		os.Exit(1)
+	}
 }
