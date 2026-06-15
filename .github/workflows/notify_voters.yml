@@ -1,0 +1,24 @@
+name: Notify Voters
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel_id:
+        description: 'Slack channel the poll was posted in (defaults to SLACK_CHANNEL_ID secret)'
+        required: false
+        default: ''
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - run: go run ./cmd/notifyvoters
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL_ID: ${{ inputs.channel_id || secrets.SLACK_CHANNEL_ID }}

@@ -3,6 +3,7 @@ package runner
 import (
 	"fmt"
 	"log/slog"
+	"math/rand"
 	"sort"
 	"strings"
 
@@ -10,6 +11,41 @@ import (
 	"github.com/masonite-byte/slack-poll-bot/internal/slackclient"
 	"github.com/slack-go/slack"
 )
+
+var winnerMessages = []string{
+	"Congratulations... your sheep mentality paid off. *%s* won! 🐑",
+	"Democracy has spoken and for once you were on the right side. *%s* won! 🎉",
+	"Your vote actually counted for something. Shocking, we know. *%s* won! 🏆",
+	"You backed the right horse this time. *%s* won! 🐴",
+	"Even a broken clock is right twice a day. *%s* won! ⏰",
+	"Popular opinion prevails, and so do you. *%s* won! 🥇",
+	"The herd has spoken, and you were proudly part of it. *%s* won! 🎊",
+	"You voted with the majority. Truly a courageous act of absolutely no independent thought. *%s* won! 🧠",
+	"Incredible. You picked the most popular option. A bold, safe, utterly predictable move. *%s* won! 👏",
+	"Science has yet to determine whether you predicted this or just got lucky. Either way, *%s* won! 🔬",
+	"Your ancestors are weeping tears of joy. Or they would be, if they cared about this. *%s* won! 👴",
+	"Against all odds — well, actually with all odds — *%s* won and so did you! 📊",
+	"You voted for *%s* and it won. Please do not let this go to your head. We're begging you. 🙏",
+	"The algorithm has determined you made the correct choice this week. Do not expect consistency. *%s* won! 🤖",
+}
+
+var loserMessages = []string{
+	"James Maddison sympathizes with you... *%s* won. Your choice didn't make the cut. 💔",
+	"The tyranny of the majority strikes again. *%s* won. Your vote was noted... and ignored. 🗳️",
+	"Bold choice. Wrong choice. *%s* won. 😬",
+	"Not everyone can be right. *%s* won. Better luck next week! 😔",
+	"The people have spoken, and they said 'not that'. *%s* won. 😅",
+	"Your participation trophy is in the mail. *%s* won. 🏅",
+	"History is written by the winners, and you are not in it. *%s* won. 📜",
+	"We have reviewed your vote. We have concerns. *%s* won. 🔎",
+	"At least you voted. That's genuinely the nicest thing we can say right now. *%s* won. 🕊️",
+	"A moment of silence for your pick, which has been decisively rejected by your peers. *%s* won. 🪦",
+	"Your taste has been evaluated by a panel of your coworkers and found lacking. *%s* won. 🧑‍⚖️",
+	"The ghost of your choice will haunt the break room. *%s* won. 👻",
+	"In an alternate universe your pick won. Unfortunately you live in this one. *%s* won. 🌍",
+	"Your vote has been carefully considered and ceremonially thrown in the bin. *%s* won. 🗑️",
+	"Statistically, this was always going to happen. Maybe reconsider your entire worldview. *%s* won. 📉",
+}
 
 type pollResult struct {
 	Name  string
@@ -211,6 +247,58 @@ func RunoffPoll(api slackclient.API) (string, error) {
 	return fmt.Sprintf("Runoff poll posted with tied options: %s.", strings.Join(winning, ", ")), nil
 }
 
+// NotifyVoters DMs each voter with a randomly chosen winner or loser message.
+func NotifyVoters(api slackclient.API) error {
+	timestamp, err := api.FindLatestPoll()
+	if err != nil {
+		return err
+	}
+
+	reactions, err := api.GetReactions(timestamp)
+	if err != nil {
+		return err
+	}
+
+	botID, err := api.BotUserID()
+	if err != nil {
+		return err
+	}
+
+	results := tallyResults(reactions, botID)
+	_, winning := findWinners(results)
+	winnerLabel := strings.Join(winning, " and ")
+
+	winningSet := make(map[string]bool, len(winning))
+	for _, w := range winning {
+		winningSet[w] = true
+	}
+
+	for _, reaction := range reactions {
+		label, ok := poll.ReactionLabels[reaction.Name]
+		if !ok {
+			label = reaction.Name
+		}
+		isWinner := winningSet[label]
+
+		for _, userID := range reaction.Users {
+			if userID == botID {
+				continue
+			}
+			var msg string
+			if isWinner {
+				msg = fmt.Sprintf(winnerMessages[rand.Intn(len(winnerMessages))], label)
+			} else {
+				msg = fmt.Sprintf(loserMessages[rand.Intn(len(loserMessages))], winnerLabel)
+			}
+			if err := api.SendDM(userID, msg); err != nil {
+				slog.Warn("failed to DM voter", "userID", userID, "error", err)
+			}
+		}
+	}
+
+	return nil
+}
+
 // DeleteLatestPoll finds the most recent poll and deletes it.
 func DeleteLatestPoll(api slackclient.API) (string, error) {
 	timestamp, err := api.FindLatestPoll()
@@ -229,6 +317,7 @@ func BuildHelpText() string {
 		"/results   - show the current poll results.",
 		"/newpoll   - post a new weekly poll.",
 		"/runoff    - start a runoff poll when tied.",
+		"/notify    - DM voters with their results.",
 		"/delete    - delete the most recent poll.",
 		"/create    - create a custom poll (coming soon).",
 		"/schedule  - show the weekly poll schedule.",

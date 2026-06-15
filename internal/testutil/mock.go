@@ -32,3 +32,4 @@ func (m *MockAPI) FindLatestPoll() (string, error)                 { return m.Ts
 func (m *MockAPI) BotUserID() (string, error)                      { return m.BotID, nil }
 func (m *MockAPI) ChannelID() string                               { return "C" }
 func (m *MockAPI) DeleteMessage(channelID, timestamp string) error { return nil }
+func (m *MockAPI) SendDM(userID, text string) error                { return nil }

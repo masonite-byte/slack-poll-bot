@@ -13,6 +13,7 @@ const HELP_TEXT = [
   '/results   - show the current poll results.',
   '/newpoll   - post a new weekly poll.',
   '/runoff    - start a runoff poll when tied.',
+  '/notify    - DM voters with their results.',
   '/delete    - delete the most recent poll.',
   '/create    - create a custom poll (coming soon).',
   '/schedule  - show the weekly poll schedule.',
@@ -154,6 +155,15 @@ async function handleSlashCommand(request, env) {
         return ephemeral('Failed to trigger runoff. Please try again.');
       }
 
+    case '/notify':
+      try {
+        await triggerWorkflow('notify_voters.yml', env, { channel_id: channelId });
+        return ephemeral('Notifying voters with their results. Check your DMs!');
+      } catch (e) {
+        console.error('notify workflow error:', e);
+        return ephemeral('Failed to notify voters. Please try again.');
+      }
+
     case '/delete':
       try {
         await triggerWorkflow('delete_poll.yml', env, { channel_id: channelId });
@@ -196,7 +206,7 @@ async function handleScheduled(cron, env) {
     case '5 15 * * 1':
       if (hour === 9) {
         console.log('Triggering weekly poll post');
-        await triggerWorkflow('post_poll.yml', env);
+        await triggerWorkflow('post_poll.yml', env, { channel_id: channelId });
       } else {
         console.log(`Skipping poll post — Chicago hour is ${hour}, expected 9`);
       }
@@ -206,7 +216,7 @@ async function handleScheduled(cron, env) {
     case '5 23 * * 2':
       if (hour === 17) {
         console.log('Triggering tie check');
-        await triggerWorkflow('check_ties.yml', env);
+        await triggerWorkflow('check_ties.yml', env, { channel_id: channelId });
       } else {
         console.log(`Skipping tie check — Chicago hour is ${hour}, expected 17`);
       }
@@ -216,7 +226,7 @@ async function handleScheduled(cron, env) {
     case '5 23 * * 3':
       if (hour === 17) {
         console.log('Triggering results post');
-        await triggerWorkflow('post_results.yml', env);
+        await triggerWorkflow('post_results.yml', env, { channel_id: channelId });
       } else {
         console.log(`Skipping results post — Chicago hour is ${hour}, expected 17`);
       }
