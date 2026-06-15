@@ -38,3 +38,8 @@ coverage.out
 # Local config
 # =========================
 config.local.json
+
+# =========================
+# Cloudflare / Wrangler
+# =========================
+.wrangler/
