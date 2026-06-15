@@ -13,6 +13,7 @@ const HELP_TEXT = [
   '/results   - show the current poll results.',
   '/newpoll   - post a new weekly poll.',
   '/runoff    - start a runoff poll when tied.',
+  '/notify    - DM voters with their results.',
   '/delete    - delete the most recent poll.',
   '/create    - create a custom poll (coming soon).',
   '/schedule  - show the weekly poll schedule.',
@@ -152,6 +153,15 @@ async function handleSlashCommand(request, env) {
       } catch (e) {
         console.error('runoff workflow error:', e);
         return ephemeral('Failed to trigger runoff. Please try again.');
+      }
+
+    case '/notify':
+      try {
+        await triggerWorkflow('notify_voters.yml', env, { channel_id: channelId });
+        return ephemeral('Notifying voters with their results. Check your DMs!');
+      } catch (e) {
+        console.error('notify workflow error:', e);
+        return ephemeral('Failed to notify voters. Please try again.');
       }
 
     case '/delete':
