@@ -10,12 +10,43 @@ const POLL_OPTIONS_TEXT = [
 
 const HELP_TEXT = [
   'Supported slash commands:',
-  '/results - show the current poll results and counts.',
-  '/newpoll - post a new poll message.',
-  '/runoff - start a runoff poll when the latest poll is tied.',
-  '/options - list poll options and emoji.',
-  '/vote - instructions for voting via emoji reactions.',
-  '/help - show this help text.',
+  '/results   - show the current poll results.',
+  '/newpoll   - post a new weekly poll.',
+  '/runoff    - start a runoff poll when tied.',
+  '/delete    - delete the most recent poll.',
+  '/create    - create a custom poll (coming soon).',
+  '/schedule  - show the weekly poll schedule.',
+  '/options   - list poll options and emoji.',
+  '/vote      - how to vote.',
+  '/about     - about this bot.',
+  '/ping      - check that the bot is alive.',
+  '/help      - show this help text.',
+].join('\n');
+
+const ABOUT_TEXT = [
+  '🤖 *Poll-inator 3000*',
+  '',
+  'Built by Mason to solve the most pressing problem in the modern workplace: what sport should we play this week?',
+  '',
+  'Capabilities:',
+  "• Posts weekly polls so humans don't have to think",
+  '• Counts emoji reactions with suspicious accuracy',
+  '• Handles ties through democratic runoff elections',
+  '• Runs on Cloudflare because servers cost money',
+  '',
+  'Powered by Go, Slack, and GitHub Actions.',
+  '',
+  '_This bot has strong opinions about Ultimate Frisbee._',
+].join('\n');
+
+const SCHEDULE_TEXT = [
+  '📅 *Weekly Poll Schedule*',
+  '',
+  '• *Monday 9:00 AM CT* — Weekly poll posted',
+  '• *Tuesday 5:00 PM CT* — Ties checked, runoff posted if needed',
+  '• *Wednesday 5:00 PM CT* — Final results posted to channel',
+  '',
+  'All times are Central Time. Polls run automatically — no human required.',
 ].join('\n');
 
 async function verifySlackSignature(request, body, signingSecret) {
@@ -121,6 +152,27 @@ async function handleSlashCommand(request, env) {
         console.error('runoff workflow error:', e);
         return ephemeral('Failed to trigger runoff. Please try again.');
       }
+
+    case '/delete':
+      try {
+        await triggerWorkflow('delete_poll.yml', env);
+        return ephemeral('Deleting the most recent poll. Check the channel shortly.');
+      } catch (e) {
+        console.error('delete workflow error:', e);
+        return ephemeral('Failed to delete poll. Please try again.');
+      }
+
+    case '/create':
+      return ephemeral('🚧 *Custom Poll Creation*\n\nThis command is under construction. Soon you\'ll be able to create custom polls with your own options. Stay tuned!');
+
+    case '/schedule':
+      return ephemeral(SCHEDULE_TEXT);
+
+    case '/about':
+      return ephemeral(ABOUT_TEXT);
+
+    case '/ping':
+      return ephemeral('pong 🏓');
 
     default:
       return ephemeral('Unsupported slash command. Use /help to see available commands.');

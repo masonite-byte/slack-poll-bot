@@ -211,15 +211,32 @@ func RunoffPoll(api slackclient.API) (string, error) {
 	return fmt.Sprintf("Runoff poll posted with tied options: %s.", strings.Join(winning, ", ")), nil
 }
 
+// DeleteLatestPoll finds the most recent poll and deletes it.
+func DeleteLatestPoll(api slackclient.API) (string, error) {
+	timestamp, err := api.FindLatestPoll()
+	if err != nil {
+		return "", err
+	}
+	if err := api.DeleteMessage(api.ChannelID(), timestamp); err != nil {
+		return "", err
+	}
+	return "Latest poll deleted.", nil
+}
+
 func BuildHelpText() string {
 	return strings.Join([]string{
 		"Supported slash commands:",
-		"/results - show the current poll results and counts.",
-		"/newpoll - post a new poll message.",
-		"/runoff - start a runoff poll when the latest poll is tied.",
-		"/options - list poll options and emoji.",
-		"/vote - instructions for voting via emoji reactions.",
-		"/help - show this help text.",
+		"/results   - show the current poll results.",
+		"/newpoll   - post a new weekly poll.",
+		"/runoff    - start a runoff poll when tied.",
+		"/delete    - delete the most recent poll.",
+		"/create    - create a custom poll (coming soon).",
+		"/schedule  - show the weekly poll schedule.",
+		"/options   - list poll options and emoji.",
+		"/vote      - how to vote.",
+		"/about     - about this bot.",
+		"/ping      - check that the bot is alive.",
+		"/help      - show this help text.",
 	}, "\n")
 }
 
