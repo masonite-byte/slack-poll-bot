@@ -17,16 +17,21 @@ jobs:
           go-version: "1.22"
 
       - name: Verify CT local time
+        id: time-check
+        if: github.event_name == 'schedule'
         run: |
           CURRENT_DAY=$(TZ=America/Chicago date +'%u')
           CURRENT_HOUR=$(TZ=America/Chicago date +'%H')
           echo "Chicago time — day: $CURRENT_DAY, hour: $CURRENT_HOUR"
-          if [ "$CURRENT_DAY" != "1" ] || [ "$CURRENT_HOUR" != "09" ]; then
-            echo "Not Monday 09:xx CT — skipping job"
-            exit 0
+          if [ "$CURRENT_DAY" = "1" ] && [ "$CURRENT_HOUR" = "09" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Not Monday 09:xx CT — skipping"
+            echo "run=false" >> "$GITHUB_OUTPUT"
           fi
 
       - run: go run ./cmd/postpoll
+        if: github.event_name == 'workflow_dispatch' || steps.time-check.outputs.run == 'true'
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}

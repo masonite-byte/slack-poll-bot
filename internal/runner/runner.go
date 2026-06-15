@@ -214,9 +214,7 @@ func RunoffPoll(api slackclient.API) (string, error) {
 func BuildHelpText() string {
 	return strings.Join([]string{
 		"Supported slash commands:",
-		"/results - show the current poll results.",
-		"/recount - rerun the current poll tally.",
-		"/pollstatus - show the current poll status and counts.",
+		"/pollstatus - show the current poll results and counts.",
 		"/newpoll - post a new poll message.",
 		"/runoff - start a runoff poll when the latest poll is tied.",
 		"/options - list poll options and emoji.",

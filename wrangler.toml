@@ -1,0 +1,6 @@
+name = "slack-poll-bot"
+main = "worker/index.js"
+compatibility_date = "2026-06-15"
+
+[vars]
+GITHUB_REPO = "masonite-byte/slack-poll-bot"
