@@ -2,6 +2,11 @@ name: Delete Poll
 
 on:
   workflow_dispatch:
+    inputs:
+      channel_id:
+        description: 'Slack channel to post to (defaults to SLACK_CHANNEL_ID secret)'
+        required: false
+        default: ''
 
 jobs:
   run:
@@ -16,4 +21,4 @@ jobs:
       - run: go run ./cmd/deletepoll
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-          SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+          SLACK_CHANNEL_ID: ${{ inputs.channel_id || secrets.SLACK_CHANNEL_ID }}

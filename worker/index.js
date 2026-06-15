@@ -76,7 +76,7 @@ async function verifySlackSignature(request, body, signingSecret) {
   return computed === slackSig;
 }
 
-async function triggerWorkflow(workflowFile, env) {
+async function triggerWorkflow(workflowFile, env, inputs = {}) {
   const url = `https://api.github.com/repos/${env.GITHUB_REPO}/actions/workflows/${workflowFile}/dispatches`;
   const resp = await fetch(url, {
     method: 'POST',
@@ -87,7 +87,7 @@ async function triggerWorkflow(workflowFile, env) {
       'User-Agent': 'slack-poll-bot',
       'X-GitHub-Api-Version': '2022-11-28',
     },
-    body: JSON.stringify({ ref: 'main' }),
+    body: JSON.stringify({ ref: 'main', inputs }),
   });
   if (!resp.ok) {
     const text = await resp.text();
@@ -111,6 +111,7 @@ async function handleSlashCommand(request, env) {
 
   const params = new URLSearchParams(body);
   const command = params.get('command');
+  const channelId = params.get('channel_id') || '';
 
   switch (command) {
     case '/help':
@@ -128,7 +129,7 @@ async function handleSlashCommand(request, env) {
 
     case '/results':
       try {
-        await triggerWorkflow('post_results.yml', env);
+        await triggerWorkflow('post_results.yml', env, { channel_id: channelId });
         return ephemeral('Results are being computed and will be posted to the channel shortly.');
       } catch (e) {
         console.error('results workflow error:', e);
@@ -137,7 +138,7 @@ async function handleSlashCommand(request, env) {
 
     case '/newpoll':
       try {
-        await triggerWorkflow('post_poll.yml', env);
+        await triggerWorkflow('post_poll.yml', env, { channel_id: channelId });
         return ephemeral('New poll will be posted to the channel shortly.');
       } catch (e) {
         console.error('newpoll workflow error:', e);
@@ -146,7 +147,7 @@ async function handleSlashCommand(request, env) {
 
     case '/runoff':
       try {
-        await triggerWorkflow('check_ties.yml', env);
+        await triggerWorkflow('check_ties.yml', env, { channel_id: channelId });
         return ephemeral('Checking for ties and posting runoff poll if needed. Check the channel shortly.');
       } catch (e) {
         console.error('runoff workflow error:', e);
@@ -155,7 +156,7 @@ async function handleSlashCommand(request, env) {
 
     case '/delete':
       try {
-        await triggerWorkflow('delete_poll.yml', env);
+        await triggerWorkflow('delete_poll.yml', env, { channel_id: channelId });
         return ephemeral('Deleting the most recent poll. Check the channel shortly.');
       } catch (e) {
         console.error('delete workflow error:', e);
@@ -195,7 +196,7 @@ async function handleScheduled(cron, env) {
     case '5 15 * * 1':
       if (hour === 9) {
         console.log('Triggering weekly poll post');
-        await triggerWorkflow('post_poll.yml', env);
+        await triggerWorkflow('post_poll.yml', env, { channel_id: channelId });
       } else {
         console.log(`Skipping poll post — Chicago hour is ${hour}, expected 9`);
       }
@@ -205,7 +206,7 @@ async function handleScheduled(cron, env) {
     case '5 23 * * 2':
       if (hour === 17) {
         console.log('Triggering tie check');
-        await triggerWorkflow('check_ties.yml', env);
+        await triggerWorkflow('check_ties.yml', env, { channel_id: channelId });
       } else {
         console.log(`Skipping tie check — Chicago hour is ${hour}, expected 17`);
       }
@@ -215,7 +216,7 @@ async function handleScheduled(cron, env) {
     case '5 23 * * 3':
       if (hour === 17) {
         console.log('Triggering results post');
-        await triggerWorkflow('post_results.yml', env);
+        await triggerWorkflow('post_results.yml', env, { channel_id: channelId });
       } else {
         console.log(`Skipping results post — Chicago hour is ${hour}, expected 17`);
       }
