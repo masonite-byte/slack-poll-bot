@@ -5,6 +5,11 @@ on:
     - cron: "5 22 * * 2" # Tue 5:05 PM CDT
     - cron: "5 23 * * 2" # Tue 5:05 PM CST
   workflow_dispatch:
+    inputs:
+      channel_id:
+        description: 'Slack channel to post to (defaults to SLACK_CHANNEL_ID secret)'
+        required: false
+        default: ''
 
 jobs:
   run:
@@ -35,4 +40,4 @@ jobs:
         if: github.event_name == 'workflow_dispatch' || steps.time-check.outputs.run == 'true'
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-          SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+          SLACK_CHANNEL_ID: ${{ inputs.channel_id || secrets.SLACK_CHANNEL_ID }}
