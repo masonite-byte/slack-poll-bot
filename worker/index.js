@@ -53,6 +53,7 @@ async function triggerWorkflow(workflowFile, env) {
       'Authorization': `Bearer ${env.GITHUB_TOKEN}`,
       'Accept': 'application/vnd.github+json',
       'Content-Type': 'application/json',
+      'User-Agent': 'slack-poll-bot',
       'X-GitHub-Api-Version': '2022-11-28',
     },
     body: JSON.stringify({ ref: 'main' }),
