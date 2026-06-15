@@ -247,7 +247,8 @@ func RunoffPoll(api slackclient.API) (string, error) {
 	return fmt.Sprintf("Runoff poll posted with tied options: %s.", strings.Join(winning, ", ")), nil
 }
 
-// NotifyVoters DMs each voter with a randomly chosen winner or loser message.
+// NotifyVoters DMs each voter once with a randomly chosen winner or loser message.
+// If a voter backed multiple options and one of them won, they are treated as a winner.
 func NotifyVoters(api slackclient.API) error {
 	timestamp, err := api.FindLatestPoll()
 	if err != nil {
@@ -273,26 +274,35 @@ func NotifyVoters(api slackclient.API) error {
 		winningSet[w] = true
 	}
 
+	// Build a map of userID → whether they voted for a winning option
+	votedForWinner := make(map[string]bool)
+	seen := make(map[string]bool)
+
 	for _, reaction := range reactions {
 		label, ok := poll.ReactionLabels[reaction.Name]
 		if !ok {
 			label = reaction.Name
 		}
-		isWinner := winningSet[label]
-
 		for _, userID := range reaction.Users {
 			if userID == botID {
 				continue
 			}
-			var msg string
-			if isWinner {
-				msg = fmt.Sprintf(winnerMessages[rand.Intn(len(winnerMessages))], label)
-			} else {
-				msg = fmt.Sprintf(loserMessages[rand.Intn(len(loserMessages))], winnerLabel)
+			seen[userID] = true
+			if winningSet[label] {
+				votedForWinner[userID] = true
 			}
-			if err := api.SendDM(userID, msg); err != nil {
-				slog.Warn("failed to DM voter", "userID", userID, "error", err)
-			}
+		}
+	}
+
+	for userID := range seen {
+		var msg string
+		if votedForWinner[userID] {
+			msg = fmt.Sprintf(winnerMessages[rand.Intn(len(winnerMessages))], winnerLabel)
+		} else {
+			msg = fmt.Sprintf(loserMessages[rand.Intn(len(loserMessages))], winnerLabel)
+		}
+		if err := api.SendDM(userID, msg); err != nil {
+			slog.Warn("failed to DM voter", "userID", userID, "error", err)
 		}
 	}
 
