@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       channel_id:
-        description: 'Slack channel to post to (defaults to SLACK_CHANNEL_ID secret)'
+        description: 'Slack channel to delete from (defaults to SLACK_CHANNEL_ID secret)'
         required: false
         default: ''
 
