@@ -32,6 +32,7 @@ type API interface {
 	BotUserID() (string, error)
 	ChannelID() string
 	DeleteMessage(channelID, timestamp string) error
+	SendDM(userID, text string) error
 }
 
 // New initializes the Slack client using environment variables and validates them
@@ -111,6 +112,12 @@ func (c *Client) ChannelID() string {
 // DeleteMessage deletes a message from the given channel by timestamp.
 func (c *Client) DeleteMessage(channelID, timestamp string) error {
 	_, _, err := c.api.DeleteMessage(channelID, timestamp)
+	return err
+}
+
+// SendDM sends a direct message to a user by their Slack user ID.
+func (c *Client) SendDM(userID, text string) error {
+	_, _, err := c.api.PostMessage(userID, slack.MsgOptionText(text, false))
 	return err
 }
 

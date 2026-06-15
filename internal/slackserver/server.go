@@ -70,6 +70,9 @@ func (s *Server) handleSlash(w http.ResponseWriter, r *http.Request) {
 		message = "New poll posted."
 	case "/runoff":
 		message, responseErr = runner.RunoffPoll(s.api)
+	case "/notify":
+		responseErr = runner.NotifyVoters(s.api)
+		message = "Voters notified."
 	case "/delete":
 		message, responseErr = runner.DeleteLatestPoll(s.api)
 	case "/options":
