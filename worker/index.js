@@ -10,7 +10,7 @@ const POLL_OPTIONS_TEXT = [
 
 const HELP_TEXT = [
   'Supported slash commands:',
-  '/pollstatus - show the current poll results and counts.',
+  '/results - show the current poll results and counts.',
   '/newpoll - post a new poll message.',
   '/runoff - start a runoff poll when the latest poll is tied.',
   '/options - list poll options and emoji.',
@@ -94,7 +94,7 @@ async function handleSlashCommand(request, env) {
         '\nUse /results to check the current tally.',
       );
 
-    case '/pollstatus':
+    case '/results':
       try {
         await triggerWorkflow('post_results.yml', env);
         return ephemeral('Results are being computed and will be posted to the channel shortly.');

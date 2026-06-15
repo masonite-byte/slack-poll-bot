@@ -27,7 +27,7 @@ func TestSlashCommandResultsResponse(t *testing.T) {
 	server := New(api, "test-secret")
 
 	form := url.Values{}
-	form.Set("command", "/pollstatus")
+	form.Set("command", "/results")
 	form.Set("text", "")
 
 	req := httptest.NewRequest(http.MethodPost, "/slack/commands", strings.NewReader(form.Encode()))
