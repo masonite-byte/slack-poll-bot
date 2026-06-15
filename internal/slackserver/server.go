@@ -63,7 +63,7 @@ func (s *Server) handleSlash(w http.ResponseWriter, r *http.Request) {
 	var responseErr error
 
 	switch cmd.Command {
-	case "/pollstatus":
+	case "/results":
 		message, responseErr = runner.BuildPollStatusMessage(s.api)
 	case "/newpoll":
 		responseErr = runner.RunPostPoll(s.api)
