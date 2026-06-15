@@ -29,6 +29,16 @@ var winnerMessages = []string{
 	"The algorithm has determined you made the correct choice this week. Do not expect consistency. *%s* won! 🤖",
 }
 
+var tieMessages = []string{
+	"It's a tie! Democracy has collapsed. A runoff poll is being posted — go finish what you started. 🗳️",
+	"Incredible. You and your coworkers managed to be equally wrong. A runoff has been posted. 🤝",
+	"The people are divided. A runoff poll is live — please do better this time. ⚔️",
+	"Your collective indecision has triggered a runoff. Congratulations on nothing. Go vote again. 🙃",
+	"A tie has been detected. Scientists are baffled. A runoff poll awaits you. 🔬",
+	"The algorithm is upset. There is a tie. A runoff is being posted. Fix this. 🤖",
+	"History will record this as the day your office couldn't make up its mind. Runoff poll is up. 📜",
+}
+
 var loserMessages = []string{
 	"James Maddison sympathizes with you... *%s* won. Your choice didn't make the cut. 💔",
 	"The tyranny of the majority strikes again. *%s* won. Your vote was noted... and ignored. 🗳️",
@@ -266,7 +276,8 @@ func NotifyVoters(api slackclient.API) error {
 	}
 
 	results := tallyResults(reactions, botID)
-	_, winning := findWinners(results)
+	maxCount, winning := findWinners(results)
+	isTie := maxCount > 0 && len(winning) > 1
 	winnerLabel := strings.Join(winning, " and ")
 
 	winningSet := make(map[string]bool, len(winning))
@@ -296,7 +307,9 @@ func NotifyVoters(api slackclient.API) error {
 
 	for userID := range seen {
 		var msg string
-		if votedForWinner[userID] {
+		if isTie {
+			msg = tieMessages[rand.Intn(len(tieMessages))]
+		} else if votedForWinner[userID] {
 			msg = fmt.Sprintf(winnerMessages[rand.Intn(len(winnerMessages))], winnerLabel)
 		} else {
 			msg = fmt.Sprintf(loserMessages[rand.Intn(len(loserMessages))], winnerLabel)
