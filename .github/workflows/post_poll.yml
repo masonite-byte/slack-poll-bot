@@ -2,8 +2,8 @@ name: Post Poll
 
 on:
   schedule:
-    - cron: "0 14 * * 1" # Mon 9:00 AM CT (CDT)
-    - cron: "0 15 * * 1" # Mon 9:00 AM CT (CST)
+    - cron: "5 14 * * 1" # Mon 9:05 AM CT (CDT)
+    - cron: "5 15 * * 1" # Mon 9:05 AM CT (CST)
   workflow_dispatch:
 
 jobs:
@@ -18,8 +18,11 @@ jobs:
 
       - name: Verify CT local time
         run: |
-          if [ "$(TZ=America/Chicago date +'%u %H')" != "1 09" ]; then
-            echo "Not Monday 09:00 CT — skipping job"
+          CURRENT_DAY=$(TZ=America/Chicago date +'%u')
+          CURRENT_HOUR=$(TZ=America/Chicago date +'%H')
+          echo "Chicago time — day: $CURRENT_DAY, hour: $CURRENT_HOUR"
+          if [ "$CURRENT_DAY" != "1" ] || [ "$CURRENT_HOUR" != "09" ]; then
+            echo "Not Monday 09:xx CT — skipping job"
             exit 0
           fi
 

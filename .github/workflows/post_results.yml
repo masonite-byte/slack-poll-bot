@@ -2,8 +2,8 @@ name: Post Results
 
 on:
   schedule:
-    - cron: "0 22 * * 3" # Wed 5:00 PM CT (CDT)
-    - cron: "0 23 * * 3" # Wed 5:00 PM CT (CST)
+    - cron: "5 22 * * 3" # Wed 5:05 PM CT (CDT)
+    - cron: "5 23 * * 3" # Wed 5:05 PM CT (CST)
   workflow_dispatch:
 
 jobs:
@@ -18,8 +18,11 @@ jobs:
 
       - name: Verify CT local time
         run: |
-          if [ "$(TZ=America/Chicago date +'%u %H')" != "3 17" ]; then
-            echo "Not Wednesday 17:00 CT — skipping job"
+          CURRENT_DAY=$(TZ=America/Chicago date +'%u')
+          CURRENT_HOUR=$(TZ=America/Chicago date +'%H')
+          echo "Chicago time — day: $CURRENT_DAY, hour: $CURRENT_HOUR"
+          if [ "$CURRENT_DAY" != "3" ] || [ "$CURRENT_HOUR" != "17" ]; then
+            echo "Not Wednesday 17:xx CT — skipping job"
             exit 0
           fi
 

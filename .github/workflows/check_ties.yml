@@ -2,8 +2,8 @@ name: Check Poll Ties
 
 on:
   schedule:
-    - cron: "0 22 * * 2" # Tue 5:00 PM CDT
-    - cron: "0 23 * * 2" # Tue 5:00 PM CST
+    - cron: "5 22 * * 2" # Tue 5:05 PM CDT
+    - cron: "5 23 * * 2" # Tue 5:05 PM CST
   workflow_dispatch:
 
 jobs:
@@ -19,8 +19,11 @@ jobs:
 
       - name: Verify CT local time
         run: |
-          if [ "$(TZ=America/Chicago date +'%u %H')" != "2 17" ]; then
-            echo "Not Tuesday 5:00 PM CT — skipping job"
+          CURRENT_DAY=$(TZ=America/Chicago date +'%u')
+          CURRENT_HOUR=$(TZ=America/Chicago date +'%H')
+          echo "Chicago time — day: $CURRENT_DAY, hour: $CURRENT_HOUR"
+          if [ "$CURRENT_DAY" != "2" ] || [ "$CURRENT_HOUR" != "17" ]; then
+            echo "Not Tuesday 17:xx CT — skipping job"
             exit 0
           fi
 
