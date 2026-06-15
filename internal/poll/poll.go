@@ -33,7 +33,7 @@ func weeklyPoll() string {
 	poll := fmt.Sprintf("@channel: 📊 *Weekly Poll*\n\nWhat sporting event should we do this week???")
 	for _, option := range DefaultPollOptions {
 		if emoji, ok := OptionReactions[option]; ok {
-			poll += fmt.Sprintf("\n:%s: %s", emoji, option)
+			poll += fmt.Sprintf("\n    :%s: %s", emoji, option)
 		} else {
 			poll += fmt.Sprintf("\n Error generating this option: %s", option)
 		}
@@ -70,7 +70,7 @@ func GetRunoffPoll(options []string) PollInstance {
 		if !ok {
 			reaction = strings.ToLower(strings.ReplaceAll(opt, " ", "_"))
 		}
-		text += fmt.Sprintf("\n:%s: %s", reaction, opt)
+		text += fmt.Sprintf("\n    :%s: %s", reaction, opt)
 		emojis = append(emojis, reaction)
 	}
 	return PollInstance{Text: text, Emojis: emojis}
@@ -111,7 +111,7 @@ func BuildPollBlocks(title, prompt, marker string, options []string) []slack.Blo
 			reaction = strings.ToLower(strings.ReplaceAll(option, " ", "_"))
 		}
 		blocks = append(blocks, slack.NewSectionBlock(
-			slack.NewTextBlockObject("mrkdwn", fmt.Sprintf(":%s: %s", reaction, option), false, false),
+			slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("    :%s: %s", reaction, option), false, false),
 			nil,
 			nil,
 		))

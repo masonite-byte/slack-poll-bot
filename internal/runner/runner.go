@@ -68,16 +68,19 @@ func RunResults(api slackclient.API) (string, bool, error) {
 func BuildResultsMessage(api slackclient.API) (string, error) {
 	timestamp, err := api.FindLatestPoll()
 	if err != nil {
+		slog.Error("BuildResultsMessage: FindLatestPoll failed", "error", err)
 		return "", err
 	}
 
 	reactions, err := api.GetReactions(timestamp)
 	if err != nil {
+		slog.Error("BuildResultsMessage: GetReactions failed", "error", err)
 		return "", err
 	}
 
 	botID, err := api.BotUserID()
 	if err != nil {
+		slog.Error("BuildResultsMessage: BotUserID failed", "error", err)
 		return "", err
 	}
 
@@ -88,7 +91,7 @@ func BuildResultsMessage(api slackclient.API) (string, error) {
 func BuildResults(results []pollResult) string {
 	lines := []string{"📊 *Final Poll Results Are In!*"}
 	for _, result := range results {
-		lines = append(lines, fmt.Sprintf(":%s: %s received %d votes", result.Name, result.Label, result.Count))
+		lines = append(lines, fmt.Sprintf("    :%s: %s received %d votes", result.Name, result.Label, result.Count))
 	}
 
 	maxCount, winning := findWinners(results)
@@ -113,7 +116,7 @@ func BuildResultsBlocks(results []pollResult) []slack.Block {
 	blocks := []slack.Block{header}
 
 	for _, result := range results {
-		line := fmt.Sprintf(":%s: %s — %d votes", result.Name, result.Label, result.Count)
+		line := fmt.Sprintf("    :%s: %s — %d votes", result.Name, result.Label, result.Count)
 		blocks = append(blocks, slack.NewSectionBlock(
 			slack.NewTextBlockObject("mrkdwn", line, false, false),
 			nil, nil,
