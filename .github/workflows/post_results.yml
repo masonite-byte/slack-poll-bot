@@ -2,8 +2,8 @@ name: Post Results
 
 on:
   schedule:
-    - cron: "5 22 * * 3" # Wed 5:05 PM CT (CDT)
-    - cron: "5 23 * * 3" # Wed 5:05 PM CT (CST)
+    - cron: "0 22 * * 2" # Tue 5:00 PM CT (CDT)
+    - cron: "0 23 * * 2" # Tue 5:00 PM CT (CST)
   workflow_dispatch:
     inputs:
       channel_id:
@@ -28,10 +28,10 @@ jobs:
           CURRENT_DAY=$(TZ=America/Chicago date +'%u')
           CURRENT_HOUR=$(TZ=America/Chicago date +'%H')
           echo "Chicago time — day: $CURRENT_DAY, hour: $CURRENT_HOUR"
-          if [ "$CURRENT_DAY" = "3" ] && [ "$CURRENT_HOUR" = "17" ]; then
+          if [ "$CURRENT_DAY" = "2" ] && [ "$CURRENT_HOUR" = "17" ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
-            echo "Not Wednesday 17:xx CT — skipping"
+            echo "Not Tuesday 17:xx CT — skipping"
             echo "run=false" >> "$GITHUB_OUTPUT"
           fi
 

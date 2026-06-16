@@ -44,8 +44,7 @@ const SCHEDULE_TEXT = [
   '📅 *Weekly Poll Schedule*',
   '',
   '• *Monday 9:00 AM CT* — Weekly poll posted',
-  '• *Tuesday 5:00 PM CT* — Ties checked, runoff posted if needed',
-  '• *Wednesday 5:00 PM CT* — Final results posted to channel',
+  '• *Tuesday 5:00 PM CT* — Results posted, voters notified, runoff if tied',
   '',
   'All times are Central Time. Polls run automatically — no human required.',
 ].join('\n');

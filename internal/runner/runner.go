@@ -64,9 +64,24 @@ type pollResult struct {
 }
 
 // RunPostPoll posts the poll and seeds initial reactions using the provided API.
+// If a previous winner is found in channel history, that option is excluded from the poll.
 func RunPostPoll(api slackclient.API) error {
-	instance := poll.GetWeeklyPoll()
-	blocks := poll.WeeklyPollBlocks()
+	previousWinner, err := api.FindPreviousWinner()
+	if err != nil {
+		slog.Warn("could not determine previous winner, including all options", "error", err)
+	}
+
+	var instance poll.PollInstance
+	var blocks []slack.Block
+	if previousWinner != "" {
+		slog.Info("excluding previous winner from poll", "winner", previousWinner)
+		instance = poll.GetWeeklyPollExcluding(previousWinner)
+		blocks = poll.WeeklyPollBlocksExcluding(previousWinner)
+	} else {
+		instance = poll.GetWeeklyPoll()
+		blocks = poll.WeeklyPollBlocks()
+	}
+
 	_, timestamp, err := api.PostBlocks(instance.Text, blocks...)
 	if err != nil {
 		return err
