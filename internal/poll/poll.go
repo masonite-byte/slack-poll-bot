@@ -47,6 +47,16 @@ type PollInstance struct {
 	Emojis []string
 }
 
+func filteredOptions(excluded string) []string {
+	options := make([]string, 0, len(DefaultPollOptions))
+	for _, opt := range DefaultPollOptions {
+		if opt != excluded {
+			options = append(options, opt)
+		}
+	}
+	return options
+}
+
 // GetWeeklyPoll returns a structured weekly poll including the text and emojis.
 func GetWeeklyPoll() PollInstance {
 	text := weeklyPoll()
@@ -59,6 +69,36 @@ func GetWeeklyPoll() PollInstance {
 		}
 	}
 	return PollInstance{Text: text, Emojis: emojis}
+}
+
+// GetWeeklyPollExcluding returns a weekly poll with the given option removed.
+func GetWeeklyPollExcluding(excluded string) PollInstance {
+	options := filteredOptions(excluded)
+	text := fmt.Sprintf("@channel: 📊 *Weekly Poll*\n\nWhat sporting event should we do this week???")
+	for _, opt := range options {
+		if emoji, ok := OptionReactions[opt]; ok {
+			text += fmt.Sprintf("\n    :%s: %s", emoji, opt)
+		}
+	}
+	emojis := make([]string, 0, len(options))
+	for _, opt := range options {
+		if r, ok := OptionReactions[opt]; ok {
+			emojis = append(emojis, r)
+		} else {
+			emojis = append(emojis, strings.ToLower(strings.ReplaceAll(opt, " ", "_")))
+		}
+	}
+	return PollInstance{Text: text, Emojis: emojis}
+}
+
+// WeeklyPollBlocksExcluding returns Block Kit blocks for a weekly poll with one option excluded.
+func WeeklyPollBlocksExcluding(excluded string) []slack.Block {
+	return BuildPollBlocks(
+		"Weekly Poll",
+		fmt.Sprintf("@channel: What sporting event should we do this week???\n\n_(Last week's winner, %s, is excluded.)_\n\nReact with one of the options below:", excluded),
+		"weekly",
+		filteredOptions(excluded),
+	)
 }
 
 // GetRunoffPoll returns a structured runoff poll including fallback text and emojis for the given options.

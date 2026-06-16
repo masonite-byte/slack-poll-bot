@@ -29,6 +29,7 @@ type API interface {
 	AddReaction(name, timestamp string) error
 	GetReactions(timestamp string) ([]Reaction, error)
 	FindLatestPoll() (string, error)
+	FindPreviousWinner() (string, error)
 	BotUserID() (string, error)
 	ChannelID() string
 	DeleteMessage(channelID, timestamp string) error
@@ -177,4 +178,46 @@ func containsPollMarker(msg slack.Message) bool {
 
 func containsPollHeader(text string) bool {
 	return strings.HasPrefix(text, "📊 *Weekly Poll*")
+}
+
+// FindPreviousWinner scans channel history for the most recent results message and returns the winner.
+func (c *Client) FindPreviousWinner() (string, error) {
+	params := &slack.GetConversationHistoryParameters{
+		ChannelID: c.channelID,
+		Limit:     200,
+	}
+
+	maxPages := 5
+	for i := 0; i < maxPages; i++ {
+		history, err := c.api.GetConversationHistory(params)
+		if err != nil {
+			return "", err
+		}
+
+		for _, msg := range history.Messages {
+			if winner := parseTopEvent(msg.Text); winner != "" {
+				return winner, nil
+			}
+		}
+
+		if history.ResponseMetaData.NextCursor == "" {
+			break
+		}
+		params.Cursor = history.ResponseMetaData.NextCursor
+	}
+
+	return "", nil
+}
+
+func parseTopEvent(text string) string {
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		const prefix = "Top event: "
+		if strings.HasPrefix(line, prefix) {
+			winner := strings.TrimPrefix(line, prefix)
+			winner = strings.TrimSuffix(winner, ".")
+			return strings.TrimSpace(winner)
+		}
+	}
+	return ""
 }

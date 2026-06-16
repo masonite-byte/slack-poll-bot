@@ -1,9 +1,6 @@
 name: Check Poll Ties
 
 on:
-  schedule:
-    - cron: "5 22 * * 2" # Tue 5:05 PM CDT
-    - cron: "5 23 * * 2" # Tue 5:05 PM CST
   workflow_dispatch:
     inputs:
       channel_id:
@@ -22,22 +19,7 @@ jobs:
         with:
           go-version: "1.22"
 
-      - name: Verify CT local time
-        id: time-check
-        if: github.event_name == 'schedule'
-        run: |
-          CURRENT_DAY=$(TZ=America/Chicago date +'%u')
-          CURRENT_HOUR=$(TZ=America/Chicago date +'%H')
-          echo "Chicago time — day: $CURRENT_DAY, hour: $CURRENT_HOUR"
-          if [ "$CURRENT_DAY" = "2" ] && [ "$CURRENT_HOUR" = "17" ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "Not Tuesday 17:xx CT — skipping"
-            echo "run=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - run: go run ./cmd/checkties
-        if: github.event_name == 'workflow_dispatch' || steps.time-check.outputs.run == 'true'
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           SLACK_CHANNEL_ID: ${{ inputs.channel_id || secrets.SLACK_CHANNEL_ID }}
