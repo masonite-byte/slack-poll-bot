@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand"
+	"os"
 	"sort"
 	"strings"
 
@@ -128,6 +129,8 @@ func RunResults(api slackclient.API) (string, bool, error) {
 	if _, _, err := api.PostBlocks(message, blocks...); err != nil {
 		slog.Error("failed to post results", "error", err)
 	}
+
+	sendAdminDM(api, buildAdminVoterSummary(slug, reactions, botID, labels))
 
 	maxCount, winning := findWinners(results)
 	isTie := maxCount > 0 && len(winning) > 1
@@ -373,6 +376,8 @@ func RunResultsForSlug(api slackclient.API, slug string) error {
 		slog.Error("failed to post results", "error", err)
 	}
 
+	sendAdminDM(api, buildAdminVoterSummary(slug, reactions, botID, labels))
+
 	maxCount, winning := findWinners(results)
 	isTie := maxCount > 0 && len(winning) > 1
 	winnerLabel := strings.Join(winning, " and ")
@@ -475,6 +480,52 @@ func BuildVoteHelpText() string {
 		poll.PollOptionsText(),
 		"Use /results to check the current tally.",
 	}, "\n")
+}
+
+// buildAdminVoterSummary returns a DM text categorising every voter by the option they chose.
+func buildAdminVoterSummary(pollName string, reactions []slackclient.Reaction, botID string, labels map[string]string) string {
+	type optionVoters struct {
+		emoji  string
+		label  string
+		voters []string
+	}
+	var options []optionVoters
+	for _, r := range reactions {
+		var users []string
+		for _, u := range r.Users {
+			if u != botID {
+				users = append(users, u)
+			}
+		}
+		options = append(options, optionVoters{
+			emoji:  r.Name,
+			label:  resolveLabel(r.Name, labels),
+			voters: users,
+		})
+	}
+
+	lines := []string{fmt.Sprintf("📊 *Admin Voter Summary: %s*", pollName)}
+	for _, opt := range options {
+		lines = append(lines, fmt.Sprintf("\n:%s: *%s* (%d vote%s)", opt.emoji, opt.label, len(opt.voters), map[bool]string{true: "", false: "s"}[len(opt.voters) == 1]))
+		if len(opt.voters) == 0 {
+			lines = append(lines, "  _No votes_")
+		}
+		for _, uid := range opt.voters {
+			lines = append(lines, fmt.Sprintf("  • <@%s>", uid))
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+// sendAdminDM sends a DM to the user in SLACK_ADMIN_USER_ID, silently skipping if unset.
+func sendAdminDM(api slackclient.API, text string) {
+	adminID := os.Getenv("SLACK_ADMIN_USER_ID")
+	if adminID == "" {
+		return
+	}
+	if err := api.SendDM(adminID, text); err != nil {
+		slog.Warn("failed to send admin DM", "error", err)
+	}
 }
 
 func findWinners(results []pollResult) (int, []string) {

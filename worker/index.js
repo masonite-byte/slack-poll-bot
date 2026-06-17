@@ -362,6 +362,28 @@ async function postButtonPollResults(slug, pollData, channelId, userId, env) {
     });
   }
 
+  // Admin voter summary DM
+  if (env.ADMIN_USER_ID) {
+    const byOption = {};
+    for (const [uid, optIdx] of Object.entries(allVotes)) {
+      if (!byOption[optIdx]) byOption[optIdx] = [];
+      byOption[optIdx].push(uid);
+    }
+    const adminLines = [`📊 *Admin Voter Summary: ${pollData.name}*`];
+    for (let i = 0; i < pollData.options.length; i++) {
+      const emoji = (pollData.emojis && pollData.emojis[i]) || NUMBER_EMOJIS[i] || 'question';
+      const voters = byOption[i] || [];
+      adminLines.push(`\n:${emoji}: *${pollData.options[i]}* (${voters.length} vote${voters.length === 1 ? '' : 's'})`);
+      if (voters.length === 0) adminLines.push('  _No votes_');
+      for (const uid of voters) adminLines.push(`  • <@${uid}>`);
+    }
+    await fetch('https://slack.com/api/chat.postMessage', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${env.SLACK_BOT_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channel: env.ADMIN_USER_ID, text: adminLines.join('\n') }),
+    });
+  }
+
   if (maxCount > 0) {
     const isTie = winners.length > 1;
     const winnerLabel = winners.join(' and ');
