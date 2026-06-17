@@ -102,8 +102,8 @@ func (p *CustomPoll) ToBlocks() []slack.Block {
 }
 
 // toButtonBlocks returns Block Kit blocks for a button-voting poll.
-// Each option is a section block with a button accessory showing the current vote count (0 when first posted).
-// The Worker updates the message in-place when voters click buttons.
+// Each option is a section block with indented mrkdwn text and a primary button accessory
+// showing the current vote count. The Worker updates the message in-place on each click.
 func (p *CustomPoll) toButtonBlocks() []slack.Block {
 	preamble := p.Preamble
 	if preamble == "" {
@@ -128,6 +128,7 @@ func (p *CustomPoll) toButtonBlocks() []slack.Block {
 			fmt.Sprintf("%s:%d", p.Slug, i),
 			slack.NewTextBlockObject("plain_text", "0 votes", false, false),
 		)
+		btn.Style = "primary"
 		blocks = append(blocks, slack.NewSectionBlock(
 			slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("    :%s: %s", p.emojiAt(i), opt), false, false),
 			nil,

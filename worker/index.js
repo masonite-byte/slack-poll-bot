@@ -2033,6 +2033,7 @@ function buildButtonPollBlocks(pollData, counts, slug) {
       accessory: {
         type: 'button',
         text: { type: 'plain_text', text: voteText },
+        style: 'primary',
         action_id: 'poll_vote',
         value: `${slug}:${i}`,
       },
@@ -2047,6 +2048,55 @@ function buildButtonPollBlocks(pollData, counts, slug) {
     elements: [{ type: 'mrkdwn', text: `poll_marker:${slug}` }],
   });
   return blocks;
+}
+
+async function postButtonPollResults(slug, pollData, channelId, userId, env) {
+  const prefix = `votes:${slug}:${channelId}:`;
+  const { keys } = await env.POLL_VOTES.list({ prefix });
+
+  const allVotes = {};
+  let messageTs = null;
+  for (const key of keys) {
+    const votes = (await env.POLL_VOTES.get(key.name, 'json')) || {};
+    Object.assign(allVotes, votes);
+    messageTs = key.name.substring(prefix.length);
+  }
+
+  const totalVotes = Object.keys(allVotes).length;
+  if (totalVotes === 0) {
+    await postEphemeral(channelId, userId, `📊 No votes have been cast yet for *${pollData.name}*.`, env);
+    return;
+  }
+
+  const counts = {};
+  for (const v of Object.values(allVotes)) counts[v] = (counts[v] || 0) + 1;
+
+  const maxCount = Math.max(...Object.values(counts));
+  const winners = pollData.options.filter((_, i) => counts[i] === maxCount);
+
+  let text = `@channel 📊 *Final Poll Results: ${pollData.name}*\n\n`;
+  for (let i = 0; i < pollData.options.length; i++) {
+    const c = counts[i] || 0;
+    const trophy = c === maxCount ? ' 🏆' : '';
+    text += `*${pollData.options[i]}* — ${c} vote${c !== 1 ? 's' : ''}${trophy}\n`;
+  }
+  text += winners.length > 1
+    ? `\nIt's a tie between ${winners.map(w => `*${w}*`).join(' and ')}!`
+    : `\nWinner: *${winners[0]}* with ${maxCount} vote${maxCount !== 1 ? 's' : ''}!`;
+
+  await fetch('https://slack.com/api/chat.postMessage', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${env.SLACK_BOT_TOKEN}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ channel: channelId, text, mrkdwn: true }),
+  });
+
+  if (messageTs) {
+    await fetch('https://slack.com/api/chat.delete', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${env.SLACK_BOT_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channel: channelId, ts: messageTs }),
+    });
+  }
 }
 
 function toBase64(str) {
@@ -2600,20 +2650,31 @@ async function handleInteraction(request, env) {
 
   // ── post_results: user selected a poll to post results for ───────────────
   if (callbackId === 'post_results') {
-    const dispatchPromise = triggerWorkflow('post_results.yml', env, { channel_id: meta.channel_id || '' })
-      .then(() => {
-        if (meta.channel_id && meta.user_id) {
-          return postEphemeral(meta.channel_id, meta.user_id, '📊 Results are being computed and will be posted shortly. The poll will be removed once done.', env);
-        }
-      })
-      .catch(err => {
-        console.error('post_results dispatch error:', err);
-        if (meta.channel_id && meta.user_id) {
-          return postEphemeral(meta.channel_id, meta.user_id, '❌ Failed to post results. Please try again.', env);
-        }
-      });
+    const selected = payload.view.state.values.poll_select?.value?.selected_option?.value || '';
+    const channelId = meta.channel_id || '';
+    const userId = meta.user_id || '';
 
-    if (typeof env._ctx?.waitUntil === 'function') env._ctx.waitUntil(dispatchPromise);
+    const work = async () => {
+      try {
+        if (selected && selected !== 'weekly') {
+          const pollData = await getPollData(selected, env);
+          if (pollData?.voting_mode === 'button') {
+            await postButtonPollResults(selected, pollData, channelId, userId, env);
+            return;
+          }
+        }
+        await triggerWorkflow('post_results.yml', env, { channel_id: channelId });
+        if (channelId && userId) {
+          await postEphemeral(channelId, userId, '📊 Results are being computed and will be posted shortly. The poll will be removed once done.', env);
+        }
+      } catch (err) {
+        console.error('post_results error:', err);
+        if (channelId && userId) {
+          await postEphemeral(channelId, userId, '❌ Failed to post results. Please try again.', env);
+        }
+      }
+    };
+    if (typeof env._ctx?.waitUntil === 'function') env._ctx.waitUntil(work());
     return new Response('', { status: 200 });
   }
 
