@@ -101,6 +101,49 @@ async function triggerWorkflow(workflowFile, env, inputs = {}) {
 
 const NUMBER_EMOJIS = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
 
+// Maps raw Unicode emoji characters to their Slack reaction names.
+const UNICODE_TO_SLACK = {
+  // Faces
+  '😀':'grinning','😃':'smiley','😄':'smile','😁':'grin','😆':'laughing',
+  '😅':'sweat_smile','🤣':'rofl','😂':'joy','🙂':'slightly_smiling_face',
+  '😊':'blush','😇':'innocent','😍':'heart_eyes','😎':'sunglasses',
+  '🤩':'star_struck','🥳':'partying_face','😋':'yum','😛':'stuck_out_tongue',
+  '😜':'stuck_out_tongue_winking_eye','😐':'neutral_face','😑':'expressionless',
+  '😏':'smirk','😒':'unamused','🙄':'roll_eyes','😬':'grimacing',
+  '😌':'relieved','😔':'pensive','😴':'sleeping','😷':'mask',
+  '🤢':'nauseated_face','🤧':'sneezing_face','🤯':'exploding_head',
+  '🤠':'cowboy_hat_face','🤓':'nerd_face','😈':'smiling_imp','👿':'imp',
+  '💩':'hankey','🤖':'robot_face','💀':'skull',
+  // Hands & gestures
+  '👋':'wave','✋':'raised_hand','👍':'+1','👎':'-1',
+  '✊':'fist','👊':'facepunch','👏':'clap','🙌':'raised_hands',
+  '🙏':'pray','💪':'muscle','✌️':'v','🤞':'crossed_fingers',
+  '🤙':'call_me_hand','👈':'point_left','👉':'point_right',
+  '👆':'point_up_2','👇':'point_down',
+  // Hearts & symbols
+  '❤️':'heart','🧡':'orange_heart','💛':'yellow_heart','💚':'green_heart',
+  '💙':'blue_heart','💜':'purple_heart','🖤':'black_heart','💔':'broken_heart',
+  '💯':'100','✅':'white_check_mark','❌':'x','⭕':'o','🚫':'no_entry_sign',
+  '❓':'question','❗':'exclamation','⚡':'zap','🔥':'fire','💥':'boom',
+  '⭐':'star','🌟':'star2','🎉':'tada','🏆':'trophy',
+  '🥇':'first_place_medal','🥈':'second_place_medal','🥉':'third_place_medal',
+  // Sports & activities
+  '⚽':'soccer','🏀':'basketball','🏈':'football','⚾':'baseball',
+  '🎾':'tennis','🏐':'volleyball','🏉':'rugby_football','🥏':'flying_disc',
+  '🏓':'ping_pong','🏸':'badminton','🥊':'boxing_glove','🥋':'martial_arts_uniform',
+  '🏊':'swimmer','🏄':'surfer','🚴':'bicyclist','🧗':'climbing',
+  '🤸':'cartwheel','🏋️':'weight_lifter','🎯':'dart','🎱':'8ball',
+  '🎿':'ski','🏹':'bow_and_arrow','🎣':'fishing_pole_and_fish',
+  '🧘':'person_in_lotus_position','🏇':'horse_racing',
+  // Food & drink
+  '🍕':'pizza','🍔':'hamburger','🌮':'taco','🍺':'beer','🥂':'clinking_glasses',
+  // Nature & weather
+  '☀️':'sunny','🌙':'crescent_moon','🌈':'rainbow','⛄':'snowman',
+  // Misc
+  '🚀':'rocket','💡':'bulb','🎮':'video_game','📊':'bar_chart',
+  '📈':'chart_with_upwards_trend','🎨':'art','🎵':'musical_note',
+};
+
 // Normalises a poll display name to a filename-safe slug, e.g. "Summer Sports" → "summer-sports".
 function slugify(name) {
   return name.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
@@ -128,9 +171,11 @@ async function pollFileExists(slug, env) {
   return resp.ok;
 }
 
-async function commitPollFile(slug, name, options, emojis, env) {
+async function commitPollFile(slug, name, options, emojis, description, env) {
   const url = `https://api.github.com/repos/${env.GITHUB_REPO}/contents/polls/${slug}.json`;
-  const content = JSON.stringify({ name, options, emojis }, null, 2);
+  const pollData = { name, options, emojis };
+  if (description) pollData.description = description;
+  const content = JSON.stringify(pollData, null, 2);
   const put = await fetch(url, {
     method: 'PUT',
     headers: { ...ghHeaders(env), 'Content-Type': 'application/json' },
@@ -182,12 +227,24 @@ async function openModal(triggerId, channelId, userId, env) {
         type: 'input',
         block_id: 'poll_options',
         label: { type: 'plain_text', text: 'Options (one per line, up to 9)' },
-        hint: { type: 'plain_text', text: 'One option per line. Start with :emoji_name: to set the reaction voters use (e.g. ":soccer: Soccer"). Without an emoji, options are numbered 1️⃣ 2️⃣ 3️⃣ automatically.' },
+        hint: { type: 'plain_text', text: 'One option per line. Prefix with an emoji to set the reaction: use :emoji_name: or paste a raw emoji (e.g. "⚽ Soccer" or ":soccer: Soccer"). Without an emoji, options are numbered 1️⃣ 2️⃣ 3️⃣ automatically.' },
         element: {
           type: 'plain_text_input',
           action_id: 'value',
           multiline: true,
-          placeholder: { type: 'plain_text', text: ':soccer: Soccer\n:basketball: Basketball\nSwimming\nPickleball' },
+          placeholder: { type: 'plain_text', text: '⚽ Soccer\n🏀 Basketball\nSwimming\nPickleball' },
+        },
+      },
+      {
+        type: 'input',
+        block_id: 'poll_description',
+        label: { type: 'plain_text', text: 'Description (optional)' },
+        optional: true,
+        element: {
+          type: 'plain_text_input',
+          action_id: 'value',
+          multiline: true,
+          placeholder: { type: 'plain_text', text: 'Add context or rules for voters — shown below the options in the poll.' },
         },
       },
     ],
@@ -385,20 +442,31 @@ async function handleInteraction(request, env) {
   const values = payload.view.state.values;
   const nameRaw = values.poll_name?.value?.value?.trim() || '';
   const optionsRaw = values.poll_options?.value?.value?.trim() || '';
+  const descriptionRaw = values.poll_description?.value?.value?.trim() || '';
 
   if (!nameRaw) return modalError('poll_name', 'Poll name is required.');
 
   const options = [];
   const emojis = [];
   for (const line of optionsRaw.split('\n').map(l => l.trim()).filter(Boolean)) {
-    const emojiMatch = line.match(/^:([a-z0-9_+\-]+):\s*(.+)$/);
-    if (emojiMatch) {
-      emojis.push(emojiMatch[1]);
-      options.push(emojiMatch[2].trim());
-    } else {
-      emojis.push(NUMBER_EMOJIS[options.length] || 'question');
-      options.push(line);
+    // :emoji_name: Label
+    const namedMatch = line.match(/^:([a-z0-9_+\-]+):\s*(.+)$/);
+    if (namedMatch) {
+      emojis.push(namedMatch[1]);
+      options.push(namedMatch[2].trim());
+      continue;
     }
+    // Raw unicode emoji + Label (e.g. "⚽ Soccer" or "😊 Happy")
+    const unicodeMatch = line.match(/^(\p{Extended_Pictographic}️?)\s+(.+)$/u);
+    if (unicodeMatch) {
+      const name = UNICODE_TO_SLACK[unicodeMatch[1]] || UNICODE_TO_SLACK[unicodeMatch[1].replace(/️$/, '')];
+      emojis.push(name || NUMBER_EMOJIS[options.length] || 'question');
+      options.push(unicodeMatch[2].trim());
+      continue;
+    }
+    // No emoji prefix — numbered fallback
+    emojis.push(NUMBER_EMOJIS[options.length] || 'question');
+    options.push(line);
   }
 
   if (options.length < 2) return modalError('poll_options', 'Please enter at least 2 options.');
@@ -411,7 +479,7 @@ async function handleInteraction(request, env) {
     return modalError('poll_name', `A poll named "${nameRaw}" already exists. Choose a different name.`);
   }
 
-  const commitPromise = commitPollFile(slug, nameRaw, options, emojis, env)
+  const commitPromise = commitPollFile(slug, nameRaw, options, emojis, descriptionRaw, env)
     .then(() => {
       if (meta.channel_id && meta.user_id) {
         return postEphemeral(
@@ -541,11 +609,8 @@ async function handleSlashCommand(request, env) {
       try {
         const polls = await listPolls(env);
         if (polls === null) return ephemeral('Failed to fetch polls. Please try again.');
-        if (polls.length === 0) {
-          return ephemeral('No custom polls yet. Use `/new` to create one.');
-        }
-        const list = polls.map(p => `• \`${p}\``).join('\n');
-        return ephemeral(`📋 *Available Custom Polls*\n\n${list}\n\nUse \`/newpoll <name>\` to post one.`);
+        const lines = ['• `weekly` — 🏃 Weekly Sports Poll', ...polls.map(p => `• \`${p}\``)];
+        return ephemeral(`📋 *Available Polls*\n\n${lines.join('\n')}\n\nUse \`/newpoll\` to post one or \`/create\` to add a custom poll.`);
       } catch (e) {
         console.error('polls list error:', e);
         return ephemeral('Failed to fetch polls. Please try again.');
