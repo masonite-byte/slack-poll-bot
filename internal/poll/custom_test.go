@@ -235,18 +235,18 @@ func TestToPollInstanceReactionModeStillHasEmojis(t *testing.T) {
 func TestToBlocksButtonModeBlockCount(t *testing.T) {
 	p := &CustomPoll{Name: "Test", Options: []string{"A", "B", "C"}, VotingMode: "button", Slug: "test"}
 	blocks := p.ToBlocks()
-	// header + prompt + 3 options + marker = 6
-	if len(blocks) != 6 {
-		t.Fatalf("expected 6 blocks, got %d", len(blocks))
+	// header + prompt + 3*(section+actions) + marker = 9
+	if len(blocks) != 9 {
+		t.Fatalf("expected 9 blocks, got %d", len(blocks))
 	}
 }
 
 func TestToBlocksButtonModeBlockCountWithDescription(t *testing.T) {
 	p := &CustomPoll{Name: "Test", Options: []string{"A", "B"}, VotingMode: "button", Slug: "test", Description: "Vote!"}
 	blocks := p.ToBlocks()
-	// header + prompt + 2 options + description + marker = 6
-	if len(blocks) != 6 {
-		t.Fatalf("expected 6 blocks, got %d", len(blocks))
+	// header + prompt + 2*(section+actions) + description + marker = 8
+	if len(blocks) != 8 {
+		t.Fatalf("expected 8 blocks, got %d", len(blocks))
 	}
 }
 
@@ -254,21 +254,21 @@ func TestToBlocksButtonModeButtonsHavePollVoteActionID(t *testing.T) {
 	p := &CustomPoll{Name: "Test", Options: []string{"Alpha", "Beta"}, VotingMode: "button", Slug: "test-poll"}
 	blocks := p.ToBlocks()
 
-	// option sections start at index 2
+	// each option: section at 2+2*i, actions block at 3+2*i
 	for i := 0; i < 2; i++ {
-		section, ok := blocks[i+2].(*slack.SectionBlock)
+		ab, ok := blocks[3+2*i].(*slack.ActionBlock)
 		if !ok {
-			t.Fatalf("block %d: expected *slack.SectionBlock, got %T", i+2, blocks[i+2])
+			t.Fatalf("block %d: expected *slack.ActionBlock, got %T", 3+2*i, blocks[3+2*i])
 		}
-		if section.Accessory == nil {
-			t.Fatalf("block %d: expected button accessory, got nil", i+2)
+		if len(ab.Elements.ElementSet) == 0 {
+			t.Fatalf("block %d: expected button element, got empty set", 3+2*i)
 		}
-		btn := section.Accessory.ButtonElement
-		if btn == nil {
-			t.Fatalf("block %d: expected ButtonElement, got nil", i+2)
+		btn, ok := ab.Elements.ElementSet[0].(*slack.ButtonBlockElement)
+		if !ok {
+			t.Fatalf("block %d: expected *slack.ButtonBlockElement, got %T", 3+2*i, ab.Elements.ElementSet[0])
 		}
 		if btn.ActionID != "poll_vote" {
-			t.Fatalf("block %d: expected action_id poll_vote, got %q", i+2, btn.ActionID)
+			t.Fatalf("block %d: expected action_id poll_vote, got %q", 3+2*i, btn.ActionID)
 		}
 	}
 }
@@ -278,8 +278,8 @@ func TestToBlocksButtonModeButtonValueFormat(t *testing.T) {
 	blocks := p.ToBlocks()
 
 	for i := 0; i < 3; i++ {
-		section := blocks[i+2].(*slack.SectionBlock)
-		btn := section.Accessory.ButtonElement
+		ab := blocks[3+2*i].(*slack.ActionBlock)
+		btn := ab.Elements.ElementSet[0].(*slack.ButtonBlockElement)
 		want := fmt.Sprintf("my-poll:%d", i)
 		if btn.Value != want {
 			t.Fatalf("option %d: expected button value %q, got %q", i, want, btn.Value)
@@ -291,8 +291,9 @@ func TestToBlocksButtonModeInitialCountIsZeroVotes(t *testing.T) {
 	p := &CustomPoll{Name: "Test", Options: []string{"A"}, VotingMode: "button", Slug: "test"}
 	blocks := p.ToBlocks()
 
-	section := blocks[2].(*slack.SectionBlock)
-	btn := section.Accessory.ButtonElement
+	// option 0: section at blocks[2], actions at blocks[3]
+	ab := blocks[3].(*slack.ActionBlock)
+	btn := ab.Elements.ElementSet[0].(*slack.ButtonBlockElement)
 	if btn.Text == nil || btn.Text.Text != "0 votes" {
 		t.Fatalf("expected initial button label '0 votes', got %q", btn.Text.Text)
 	}
@@ -316,8 +317,11 @@ func TestToBlocksEmptyVotingModeDefaultsToReaction(t *testing.T) {
 	p := &CustomPoll{Name: "Test", Options: []string{"A", "B"}, Slug: "test"}
 	blocks := p.ToBlocks()
 
-	// reaction mode: none of the option blocks should have a button accessory
+	// reaction mode: no actions blocks and no button accessories
 	for i := 2; i < len(blocks)-1; i++ {
+		if _, ok := blocks[i].(*slack.ActionBlock); ok {
+			t.Fatalf("block %d: reaction mode should not have an actions block", i)
+		}
 		if section, ok := blocks[i].(*slack.SectionBlock); ok {
 			if section.Accessory != nil && section.Accessory.ButtonElement != nil {
 				t.Fatalf("block %d: reaction mode should not have button accessory", i)
