@@ -20,7 +20,8 @@ type CustomPoll struct {
 	Name        string   `json:"name"`
 	Options     []string `json:"options"`
 	Emojis      []string `json:"emojis,omitempty"`      // parallel to Options; falls back to number emojis if absent
-	Description string   `json:"description,omitempty"` // optional context shown below options in the poll
+	Preamble    string   `json:"preamble,omitempty"`    // optional text shown above the options
+	Description string   `json:"description,omitempty"` // optional text shown below the options
 	Slug        string   `json:"-"`                     // derived from filename, not stored in JSON
 }
 
@@ -52,12 +53,18 @@ func (p *CustomPoll) ToPollInstance() PollInstance {
 
 // ToBlocks returns Block Kit blocks for the custom poll.
 func (p *CustomPoll) ToBlocks() []slack.Block {
+	preamble := p.Preamble
+	if preamble == "" {
+		preamble = "React to vote!"
+	}
+	promptText := fmt.Sprintf("@channel: %s\n\nReact with one of the options below:", preamble)
+
 	header := slack.NewSectionBlock(
 		slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("*📊 %s*", p.Name), false, false),
 		nil, nil,
 	)
 	prompt := slack.NewSectionBlock(
-		slack.NewTextBlockObject("mrkdwn", "@channel: React to vote!\n\nReact with one of the options below:", false, false),
+		slack.NewTextBlockObject("mrkdwn", promptText, false, false),
 		nil, nil,
 	)
 	blocks := []slack.Block{header, prompt}
