@@ -1,0 +1,16 @@
+{
+  "name": "Clanker Popularity Poll",
+  "options": [
+    "Robots are valuable tools that help humans perform tasks more efficiently, safely, and effectively while expanding our ability to explore, create, and innovate.",
+    "DESTROY"
+  ],
+  "emojis": [
+    "robot",
+    "boom"
+  ],
+  "author_id": "U08V6CJ885P",
+  "preamble": "What is your opinion of clankers????",
+  "description": "(This is a public test of Poll-inator's custom poll abilities... use /create to create a poll of your own)",
+  "voting_mode": "button",
+  "channel_id": "C0BAL95D0U9"
+}
