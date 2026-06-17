@@ -10,6 +10,10 @@ on:
         description: 'Slack channel to post to (defaults to SLACK_CHANNEL_ID secret)'
         required: false
         default: ''
+      poll_name:
+        description: 'Named custom poll to post (leave empty for default weekly poll)'
+        required: false
+        default: ''
 
 jobs:
   run:
@@ -40,3 +44,4 @@ jobs:
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           SLACK_CHANNEL_ID: ${{ inputs.channel_id || secrets.SLACK_CHANNEL_ID }}
+          POLL_NAME: ${{ inputs.poll_name }}

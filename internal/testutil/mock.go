@@ -6,12 +6,14 @@ import (
 )
 
 type MockAPI struct {
-	Posted         string
-	Ts             string
-	Reactions      []slackclient.Reaction
-	BotID          string
-	Added          []string
-	PreviousWinner string
+	Posted            string
+	Ts                string
+	PollSlug          string
+	Reactions         []slackclient.Reaction
+	BotID             string
+	Added             []string
+	PreviousWinner    string
+	FindLatestPollErr error
 }
 
 func (m *MockAPI) PostMessage(text string) (string, string, error) {
@@ -29,7 +31,9 @@ func (m *MockAPI) AddReaction(name, timestamp string) error {
 func (m *MockAPI) GetReactions(timestamp string) ([]slackclient.Reaction, error) {
 	return m.Reactions, nil
 }
-func (m *MockAPI) FindLatestPoll() (string, error)                 { return m.Ts, nil }
+func (m *MockAPI) FindLatestPoll() (string, string, error) {
+	return m.Ts, m.PollSlug, m.FindLatestPollErr
+}
 func (m *MockAPI) FindPreviousWinner() (string, error)             { return m.PreviousWinner, nil }
 func (m *MockAPI) BotUserID() (string, error)                      { return m.BotID, nil }
 func (m *MockAPI) ChannelID() string                               { return "C" }

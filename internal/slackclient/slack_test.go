@@ -37,6 +37,34 @@ func TestContainsPollMarker(t *testing.T) {
 	}
 }
 
+func TestPollMarkerSlugExtractsSlug(t *testing.T) {
+	cases := []struct {
+		marker string
+		want   string
+	}{
+		{"poll_marker:weekly", "weekly"},
+		{"poll_marker:runoff", "runoff"},
+		{"poll_marker:summer-sports", "summer-sports"},
+	}
+	for _, c := range cases {
+		block := slack.NewContextBlock("poll_marker",
+			slack.NewTextBlockObject("mrkdwn", c.marker, false, false),
+		)
+		msg := slack.Message{Msg: slack.Msg{Blocks: slack.Blocks{BlockSet: []slack.Block{block}}}}
+		got := pollMarkerSlug(msg)
+		if got != c.want {
+			t.Errorf("pollMarkerSlug with %q = %q, want %q", c.marker, got, c.want)
+		}
+	}
+}
+
+func TestPollMarkerSlugReturnsEmptyForNoMarker(t *testing.T) {
+	msg := slack.Message{}
+	if got := pollMarkerSlug(msg); got != "" {
+		t.Fatalf("expected empty slug for message with no blocks, got %q", got)
+	}
+}
+
 func TestContainsPollMarkerIgnoresNonPollMarkerBlock(t *testing.T) {
 	markerBlock := slack.NewContextBlock("other_context",
 		slack.NewTextBlockObject("mrkdwn", "poll_marker:weekly", false, false),
