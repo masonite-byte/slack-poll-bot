@@ -2173,17 +2173,10 @@ async function postButtonPollResults(slug, pollData, channelId, userId, env) {
       } else {
         msg = LOSER_MESSAGES[Math.floor(Math.random() * LOSER_MESSAGES.length)].replace('%s', winnerLabel);
       }
-      const openRes = await fetch('https://slack.com/api/conversations.open', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${env.SLACK_BOT_TOKEN}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ users: voterUserId }),
-      });
-      const { channel } = await openRes.json();
-      if (!channel?.id) return;
       await fetch('https://slack.com/api/chat.postMessage', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${env.SLACK_BOT_TOKEN}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ channel: channel.id, text: msg }),
+        body: JSON.stringify({ channel: voterUserId, text: msg }),
       });
     }));
   }
