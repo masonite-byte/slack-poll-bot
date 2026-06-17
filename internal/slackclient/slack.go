@@ -29,6 +29,7 @@ type API interface {
 	AddReaction(name, timestamp string) error
 	GetReactions(timestamp string) ([]Reaction, error)
 	FindLatestPoll() (timestamp, slug string, err error)
+	FindPollBySlug(slug string) (timestamp string, err error)
 	FindPreviousWinner() (string, error)
 	BotUserID() (string, error)
 	ChannelID() string
@@ -158,6 +159,33 @@ func (c *Client) FindLatestPoll() (timestamp, slug string, err error) {
 	}
 
 	return "", "", fmt.Errorf("no recent poll found in the last %d pages", pollHistoryMaxPages)
+}
+
+// FindPollBySlug scans channel history and returns the timestamp of the most recent poll
+// whose poll_marker slug matches the given slug.
+func (c *Client) FindPollBySlug(slug string) (string, error) {
+	params := &slack.GetConversationHistoryParameters{
+		ChannelID: c.channelID,
+		Limit:     100,
+	}
+
+	maxPages := pollHistoryMaxPages
+	for i := 0; i < maxPages; i++ {
+		history, err := c.api.GetConversationHistory(params)
+		if err != nil {
+			return "", err
+		}
+		for _, msg := range history.Messages {
+			if pollMarkerSlug(msg) == slug {
+				return msg.Timestamp, nil
+			}
+		}
+		if history.ResponseMetaData.NextCursor == "" {
+			break
+		}
+		params.Cursor = history.ResponseMetaData.NextCursor
+	}
+	return "", fmt.Errorf("no poll found with slug %q in the last %d pages", slug, maxPages)
 }
 
 // pollMarkerSlug extracts the slug from a poll_marker context block (e.g. "weekly", "summer-sports").

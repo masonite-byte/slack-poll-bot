@@ -34,7 +34,8 @@ func (m *MockAPI) GetReactions(timestamp string) ([]slackclient.Reaction, error)
 func (m *MockAPI) FindLatestPoll() (string, string, error) {
 	return m.Ts, m.PollSlug, m.FindLatestPollErr
 }
-func (m *MockAPI) FindPreviousWinner() (string, error)             { return m.PreviousWinner, nil }
+func (m *MockAPI) FindPollBySlug(slug string) (string, error) { return m.Ts, m.FindLatestPollErr }
+func (m *MockAPI) FindPreviousWinner() (string, error)        { return m.PreviousWinner, nil }
 func (m *MockAPI) BotUserID() (string, error)                      { return m.BotID, nil }
 func (m *MockAPI) ChannelID() string                               { return "C" }
 func (m *MockAPI) DeleteMessage(channelID, timestamp string) error { return nil }
