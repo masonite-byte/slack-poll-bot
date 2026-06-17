@@ -135,6 +135,50 @@ async function triggerWorkflow(workflowFile, env, inputs = {}) {
 
 const NUMBER_EMOJIS = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
 
+const WINNER_MESSAGES = [
+  "Congratulations... your sheep mentality paid off. *%s* won! 🐑",
+  "Democracy has spoken and for once you were on the right side. *%s* won! 🎉",
+  "Your vote actually counted for something. Shocking, we know. *%s* won! 🏆",
+  "You backed the right horse this time. *%s* won! 🐴",
+  "Even a broken clock is right twice a day. *%s* won! ⏰",
+  "Popular opinion prevails, and so do you. *%s* won! 🥇",
+  "The herd has spoken, and you were proudly part of it. *%s* won! 🎊",
+  "You voted with the majority. Truly a courageous act of absolutely no independent thought. *%s* won! 🧠",
+  "Incredible. You picked the most popular option. A bold, safe, utterly predictable move. *%s* won! 👏",
+  "Science has yet to determine whether you predicted this or just got lucky. Either way, *%s* won! 🔬",
+  "Your ancestors are weeping tears of joy. Or they would be, if they cared about this. *%s* won! 👴",
+  "Against all odds — well, actually with all odds — *%s* won and so did you! 📊",
+  "You voted for *%s* and it won. Please do not let this go to your head. We're begging you. 🙏",
+  "The algorithm has determined you made the correct choice this week. Do not expect consistency. *%s* won! 🤖",
+];
+
+const LOSER_MESSAGES = [
+  "James Maddison sympathizes with you... *%s* won. Your choice didn't make the cut. 💔",
+  "The tyranny of the majority strikes again. *%s* won. Your vote was noted... and ignored. 🗳️",
+  "Bold choice. Wrong choice. *%s* won. 😬",
+  "Not everyone can be right. *%s* won. Better luck next week! 😔",
+  "The people have spoken, and they said 'not that'. *%s* won. 😅",
+  "Your participation trophy is in the mail. *%s* won. 🏅",
+  "History is written by the winners, and you are not in it. *%s* won. 📜",
+  "We have reviewed your vote. We have concerns. *%s* won. 🔎",
+  "At least you voted. That's genuinely the nicest thing we can say right now. *%s* won. 🕊️",
+  "A moment of silence for your pick, which has been decisively rejected by your peers. *%s* won. 🪦",
+  "Your taste has been evaluated by a panel of your coworkers and found lacking. *%s* won. 🧑‍⚖️",
+  "The ghost of your choice will haunt the break room. *%s* won. 👻",
+  "In an alternate universe your pick won. Unfortunately you live in this one. *%s* won. 🌍",
+  "Your vote has been carefully considered and ceremonially thrown in the bin. *%s* won. 🗑️",
+];
+
+const TIE_MESSAGES = [
+  "It's a tie! Democracy has collapsed. A runoff poll is being posted — go finish what you started. 🗳️",
+  "Incredible. You and your coworkers managed to be equally wrong. A runoff has been posted. 🤝",
+  "The people are divided. A runoff poll is live — please do better this time. ⚔️",
+  "Your collective indecision has triggered a runoff. Congratulations on nothing. Go vote again. 🙃",
+  "A tie has been detected. Scientists are baffled. A runoff poll awaits you. 🔬",
+  "The algorithm is upset. There is a tie. A runoff is being posted. Fix this. 🤖",
+  "History will record this as the day your office couldn't make up its mind. Runoff poll is up. 📜",
+];
+
 // Auto-generated — do not edit by hand.
 // Regenerate: cd scripts && npm install && node generate-emoji-map.mjs
 // 1870 entries from gemoji 8.1.0
@@ -2029,7 +2073,7 @@ function buildButtonPollBlocks(pollData, counts, slug) {
     const voteText = count === 1 ? '1 vote' : `${count} votes`;
     blocks.push({
       type: 'section',
-      text: { type: 'mrkdwn', text: `    :${emoji}: ${pollData.options[i]}` },
+      text: { type: 'mrkdwn', text: `    :${emoji}: ${pollData.options[i]}` },
       accessory: {
         type: 'button',
         text: { type: 'plain_text', text: voteText },
@@ -2089,7 +2133,7 @@ async function postButtonPollResults(slug, pollData, channelId, userId, env) {
     { type: 'section', text: { type: 'mrkdwn', text: '📊 *Final Poll Results Are In!*' } },
     ...results.map(r => ({
       type: 'section',
-      text: { type: 'mrkdwn', text: `    :${r.emoji}: ${r.label} — ${r.count} vote${r.count !== 1 ? 's' : ''}` },
+      text: { type: 'mrkdwn', text: `    :${r.emoji}: ${r.label} — ${r.count} vote${r.count !== 1 ? 's' : ''}` },
     })),
     { type: 'section', text: { type: 'mrkdwn', text: summary } },
   ];
@@ -2097,7 +2141,7 @@ async function postButtonPollResults(slug, pollData, channelId, userId, env) {
   // Fallback text matching Go's BuildResults format
   const fallbackLines = ['📊 *Final Poll Results Are In!*'];
   for (const r of results) {
-    fallbackLines.push(`    :${r.emoji}: ${r.label} received ${r.count} votes`);
+    fallbackLines.push(`    :${r.emoji}: ${r.label} received ${r.count} votes`);
   }
   fallbackLines.push(summary.replace('@channel: ', ''));
 
@@ -2113,6 +2157,35 @@ async function postButtonPollResults(slug, pollData, channelId, userId, env) {
       headers: { 'Authorization': `Bearer ${env.SLACK_BOT_TOKEN}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ channel: channelId, ts: messageTs }),
     });
+  }
+
+  if (maxCount > 0) {
+    const isTie = winners.length > 1;
+    const winnerLabel = winners.join(' and ');
+    const winningLabels = new Set(winners);
+    await Promise.allSettled(Object.entries(allVotes).map(async ([voterUserId, optionIndex]) => {
+      const votedLabel = pollData.options[parseInt(optionIndex)];
+      let msg;
+      if (isTie) {
+        msg = TIE_MESSAGES[Math.floor(Math.random() * TIE_MESSAGES.length)];
+      } else if (winningLabels.has(votedLabel)) {
+        msg = WINNER_MESSAGES[Math.floor(Math.random() * WINNER_MESSAGES.length)].replace('%s', winnerLabel);
+      } else {
+        msg = LOSER_MESSAGES[Math.floor(Math.random() * LOSER_MESSAGES.length)].replace('%s', winnerLabel);
+      }
+      const openRes = await fetch('https://slack.com/api/conversations.open', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${env.SLACK_BOT_TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ users: voterUserId }),
+      });
+      const { channel } = await openRes.json();
+      if (!channel?.id) return;
+      await fetch('https://slack.com/api/chat.postMessage', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${env.SLACK_BOT_TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channel: channel.id, text: msg }),
+      });
+    }));
   }
 }
 

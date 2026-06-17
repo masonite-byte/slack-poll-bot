@@ -53,7 +53,7 @@ func (p *CustomPoll) ToPollInstance() PollInstance {
 	emojis := make([]string, 0, len(p.Options))
 	for i, opt := range p.Options {
 		emoji := p.emojiAt(i)
-		text += fmt.Sprintf("\n    :%s: %s", emoji, opt)
+		text += fmt.Sprintf("\n    :%s: %s", emoji, opt)
 		emojis = append(emojis, emoji)
 	}
 	return PollInstance{Text: text, Emojis: emojis}
@@ -81,7 +81,7 @@ func (p *CustomPoll) ToBlocks() []slack.Block {
 	blocks := []slack.Block{header, prompt}
 	for i, opt := range p.Options {
 		blocks = append(blocks, slack.NewSectionBlock(
-			slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("    :%s: %s", p.emojiAt(i), opt), false, false),
+			slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("    :%s: %s", p.emojiAt(i), opt), false, false),
 			nil, nil,
 		))
 	}
@@ -130,7 +130,7 @@ func (p *CustomPoll) toButtonBlocks() []slack.Block {
 		)
 		btn.Style = "primary"
 		blocks = append(blocks, slack.NewSectionBlock(
-			slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("    :%s: %s", p.emojiAt(i), opt), false, false),
+			slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("    :%s: %s", p.emojiAt(i), opt), false, false),
 			nil,
 			slack.NewAccessory(btn),
 		))
