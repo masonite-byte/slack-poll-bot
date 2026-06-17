@@ -4,3 +4,8 @@ compatibility_date = "2026-06-15"
 
 [vars]
 GITHUB_REPO = "masonite-byte/slack-poll-bot"
+ADMIN_USER_ID = "U08V6CJ885P"
+
+[[kv_namespaces]]
+binding = "POLL_VOTES"
+id = "a6292dca2ca547beabbb528a01d59cec"
