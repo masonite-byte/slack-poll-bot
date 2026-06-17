@@ -344,6 +344,81 @@ func NotifyVoters(api slackclient.API) error {
 	return nil
 }
 
+// RunResultsForSlug finds the most recent poll with the given slug, tallies results, posts them,
+// notifies voters with DMs, and deletes the original poll.
+func RunResultsForSlug(api slackclient.API, slug string) error {
+	timestamp, err := api.FindPollBySlug(slug)
+	if err != nil {
+		if strings.Contains(err.Error(), "no poll found") {
+			return ErrNoPollFound
+		}
+		return err
+	}
+
+	reactions, err := api.GetReactions(timestamp)
+	if err != nil {
+		return err
+	}
+
+	botID, err := api.BotUserID()
+	if err != nil {
+		return err
+	}
+
+	labels := buildLabelMap(slug)
+	results := tallyResults(reactions, botID, labels)
+	message := BuildResults(results)
+	blocks := BuildResultsBlocks(results)
+	if _, _, err := api.PostBlocks(message, blocks...); err != nil {
+		slog.Error("failed to post results", "error", err)
+	}
+
+	maxCount, winning := findWinners(results)
+	isTie := maxCount > 0 && len(winning) > 1
+	winnerLabel := strings.Join(winning, " and ")
+
+	winningSet := make(map[string]bool, len(winning))
+	for _, w := range winning {
+		winningSet[w] = true
+	}
+
+	votedForWinner := make(map[string]bool)
+	seen := make(map[string]bool)
+
+	for _, reaction := range reactions {
+		label := resolveLabel(reaction.Name, labels)
+		for _, userID := range reaction.Users {
+			if userID == botID {
+				continue
+			}
+			seen[userID] = true
+			if winningSet[label] {
+				votedForWinner[userID] = true
+			}
+		}
+	}
+
+	for userID := range seen {
+		var msg string
+		if isTie {
+			msg = tieMessages[rand.Intn(len(tieMessages))]
+		} else if votedForWinner[userID] {
+			msg = fmt.Sprintf(winnerMessages[rand.Intn(len(winnerMessages))], winnerLabel)
+		} else {
+			msg = fmt.Sprintf(loserMessages[rand.Intn(len(loserMessages))], winnerLabel)
+		}
+		if err := api.SendDM(userID, msg); err != nil {
+			slog.Warn("failed to DM voter", "userID", userID, "error", err)
+		}
+	}
+
+	if err := api.DeleteMessage(api.ChannelID(), timestamp); err != nil {
+		slog.Warn("failed to delete poll after posting results", "slug", slug, "error", err)
+	}
+
+	return nil
+}
+
 // RunPostCustomPoll posts a user-created custom poll and seeds its reactions.
 func RunPostCustomPoll(api slackclient.API, p *poll.CustomPoll) error {
 	instance := p.ToPollInstance()

@@ -23,8 +23,9 @@ type CustomPoll struct {
 	Preamble    string   `json:"preamble,omitempty"`    // optional text shown above the options
 	Description string   `json:"description,omitempty"` // optional text shown below the options
 	VotingMode  string   `json:"voting_mode,omitempty"` // "reaction" (default) or "button"
-	Schedule    string   `json:"schedule,omitempty"`    // e.g. "monday 09:00" — used by schedule_polls workflow
-	ChannelID   string   `json:"channel_id,omitempty"`  // Slack channel to post to on schedule; falls back to SLACK_CHANNEL_ID env
+	Schedule        string `json:"schedule,omitempty"`         // e.g. "monday 09:00" — used by schedule_polls workflow
+	ResultsSchedule string `json:"results_schedule,omitempty"` // e.g. "wednesday 17:00" — when to post results
+	ChannelID       string `json:"channel_id,omitempty"`       // Slack channel to post to on schedule; falls back to SLACK_CHANNEL_ID env
 	Slug        string   `json:"-"`                     // derived from filename, not stored in JSON
 }
 

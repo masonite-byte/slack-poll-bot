@@ -45,6 +45,17 @@ config.local.json
 .wrangler/
 
 # =========================
+# Node / npm
+# =========================
+node_modules/
+package-lock.json
+
+# =========================
+# Claude Code internals
+# =========================
+.claude/worktrees/
+
+# =========================
 # Scripts (emoji map generator)
 # =========================
 scripts/node_modules/

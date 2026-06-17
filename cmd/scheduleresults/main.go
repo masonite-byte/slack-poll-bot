@@ -14,8 +14,7 @@ import (
 	"github.com/masonite-byte/slack-poll-bot/internal/slackclient"
 )
 
-
-var stateFile = "polls/_schedule_state.json"
+var stateFile = "polls/_results_state.json"
 
 func main() {
 	_ = godotenv.Load()
@@ -52,7 +51,12 @@ func main() {
 			continue
 		}
 
-		if p.Schedule == "" || !schedule.IsDue(p.Schedule, now) || state[slug] == today {
+		if p.ResultsSchedule == "" || !schedule.IsDue(p.ResultsSchedule, now) || state[slug] == today {
+			continue
+		}
+
+		if p.VotingMode == "button" {
+			slog.Info("skipping button poll scheduled results (button polls have live counts)", "slug", slug)
 			continue
 		}
 
@@ -65,12 +69,12 @@ func main() {
 			continue
 		}
 
-		slog.Info("posting scheduled poll", "slug", slug, "schedule", p.Schedule)
+		slog.Info("posting scheduled results", "slug", slug, "results_schedule", p.ResultsSchedule)
 		os.Setenv("SLACK_CHANNEL_ID", channelID)
 		client := slackclient.New()
 
-		if err := runner.RunPostCustomPoll(client, p); err != nil {
-			slog.Error("failed to post scheduled poll", "slug", slug, "error", err)
+		if err := runner.RunResultsForSlug(client, slug); err != nil {
+			slog.Error("failed to post scheduled results", "slug", slug, "error", err)
 			continue
 		}
 
@@ -80,7 +84,7 @@ func main() {
 
 	if posted {
 		if err := saveState(state); err != nil {
-			slog.Error("failed to save schedule state", "error", err)
+			slog.Error("failed to save results state", "error", err)
 		}
 	}
 }

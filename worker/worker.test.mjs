@@ -20,12 +20,16 @@ describe('formatSchedule', () => {
     ['monday wednesday friday 09:00',   'Monday, Wednesday, Friday at 9:00 AM CT'],
     // daily
     ['daily 08:00',                     'Daily at 8:00 AM CT'],
-    // monthly
+    // monthly — single day
     ['monthly 1 09:00',                 'Monthly on the 1st at 9:00 AM CT'],
     ['monthly 15 09:00',                'Monthly on the 15th at 9:00 AM CT'],
     ['monthly 21 18:00',                'Monthly on the 21st at 6:00 PM CT'],
     ['monthly 22 18:00',                'Monthly on the 22nd at 6:00 PM CT'],
     ['monthly 23 18:00',                'Monthly on the 23rd at 6:00 PM CT'],
+    // monthly — multiple days
+    ['monthly 1 15 09:00',              'Monthly on the 1st & 15th at 9:00 AM CT'],
+    ['monthly 1 15 28 09:00',           'Monthly on the 1st, 15th & 28th at 9:00 AM CT'],
+    ['monthly 11 12 13 09:00',          'Monthly on the 11th, 12th & 13th at 9:00 AM CT'],
   ];
 
   for (const [input, expected] of cases) {

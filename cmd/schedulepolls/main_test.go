@@ -4,6 +4,8 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"github.com/masonite-byte/slack-poll-bot/internal/schedule"
 )
 
 // chicagoTime builds a time.Time in America/Chicago for test cases.
@@ -19,41 +21,41 @@ func chicagoTime(t *testing.T, year int, month time.Month, day, hour, min int) t
 // June 15 2026 is a Monday.
 func TestIsDueMatchingDayAndHour(t *testing.T) {
 	now := chicagoTime(t, 2026, time.June, 15, 9, 0) // Monday 9 AM CT
-	if !isDue("monday 09:00", now) {
+	if !schedule.IsDue("monday 09:00", now) {
 		t.Fatal("expected isDue=true for matching day and hour")
 	}
 }
 
 func TestIsDueWrongDay(t *testing.T) {
 	now := chicagoTime(t, 2026, time.June, 16, 9, 0) // Tuesday 9 AM CT
-	if isDue("monday 09:00", now) {
+	if schedule.IsDue("monday 09:00", now) {
 		t.Fatal("expected isDue=false when weekday does not match")
 	}
 }
 
 func TestIsDueWrongHour(t *testing.T) {
 	now := chicagoTime(t, 2026, time.June, 15, 10, 0) // Monday 10 AM CT
-	if isDue("monday 09:00", now) {
+	if schedule.IsDue("monday 09:00", now) {
 		t.Fatal("expected isDue=false when hour does not match")
 	}
 }
 
 func TestIsDueCaseInsensitive(t *testing.T) {
 	now := chicagoTime(t, 2026, time.June, 15, 9, 0) // Monday 9 AM CT
-	if !isDue("MONDAY 09:00", now) {
+	if !schedule.IsDue("MONDAY 09:00", now) {
 		t.Fatal("expected isDue=true for uppercase weekday")
 	}
-	if !isDue("Monday 09:00", now) {
+	if !schedule.IsDue("Monday 09:00", now) {
 		t.Fatal("expected isDue=true for title-case weekday")
 	}
 }
 
 func TestIsDueStripsTrailingTimezone(t *testing.T) {
 	now := chicagoTime(t, 2026, time.June, 15, 9, 0)
-	if !isDue("monday 09:00 CT", now) {
+	if !schedule.IsDue("monday 09:00 CT", now) {
 		t.Fatal("expected isDue=true when CT suffix is present")
 	}
-	if !isDue("monday 09:00 CST", now) {
+	if !schedule.IsDue("monday 09:00 CST", now) {
 		t.Fatal("expected isDue=true when CST suffix is present")
 	}
 }
@@ -61,14 +63,14 @@ func TestIsDueStripsTrailingTimezone(t *testing.T) {
 func TestIsDueFridayAfternoon(t *testing.T) {
 	// June 19 2026 is a Friday.
 	now := chicagoTime(t, 2026, time.June, 19, 17, 0)
-	if !isDue("friday 17:00", now) {
+	if !schedule.IsDue("friday 17:00", now) {
 		t.Fatal("expected isDue=true for friday 17:00")
 	}
 }
 
 func TestIsDueEmptyScheduleReturnsFalse(t *testing.T) {
 	now := chicagoTime(t, 2026, time.June, 15, 9, 0)
-	if isDue("", now) {
+	if schedule.IsDue("", now) {
 		t.Fatal("expected isDue=false for empty schedule")
 	}
 }
@@ -82,7 +84,7 @@ func TestIsDueInvalidFormatReturnsFalse(t *testing.T) {
 		"notaday 09:00",   // unknown weekday
 	}
 	for _, s := range cases {
-		if isDue(s, now) {
+		if schedule.IsDue(s, now) {
 			t.Fatalf("expected isDue=false for invalid schedule %q", s)
 		}
 	}
