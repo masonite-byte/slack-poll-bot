@@ -1,11 +1,12 @@
 {
   "name": "Test Poll #1",
   "options": [
-    "ðŸ˜ƒ Happy",
+    "í ½í¸ƒ Happy",
     "Thumbs down :("
   ],
   "emojis": [
     "one",
     "-1"
-  ]
+  ],
+  "author_id": "U08V6CJ885P"
 }
