@@ -1,6 +1,7 @@
 package poll
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -199,5 +200,128 @@ func TestCustomPollLabelMapNumberEmojisFallback(t *testing.T) {
 	}
 	if m["three"] != "Gamma" {
 		t.Fatalf("expected three→Gamma, got %q", m["three"])
+	}
+}
+
+// ── Button voting mode ────────────────────────────────────────────────────────
+
+func TestToPollInstanceButtonModeHasNoEmojis(t *testing.T) {
+	p := &CustomPoll{Name: "Test", Options: []string{"A", "B"}, VotingMode: "button", Slug: "test"}
+	instance := p.ToPollInstance()
+	if len(instance.Emojis) != 0 {
+		t.Fatalf("button mode: expected no emojis, got %v", instance.Emojis)
+	}
+}
+
+func TestToPollInstanceButtonModeTextMentionsVoting(t *testing.T) {
+	p := &CustomPoll{Name: "Test Poll", Options: []string{"A", "B"}, VotingMode: "button", Slug: "test"}
+	instance := p.ToPollInstance()
+	if !strings.Contains(instance.Text, "Test Poll") {
+		t.Fatalf("expected poll name in button fallback text, got %q", instance.Text)
+	}
+	if !strings.Contains(instance.Text, "vote") {
+		t.Fatalf("expected 'vote' in button fallback text, got %q", instance.Text)
+	}
+}
+
+func TestToPollInstanceReactionModeStillHasEmojis(t *testing.T) {
+	p := &CustomPoll{Name: "Test", Options: []string{"A", "B", "C"}, Slug: "test"}
+	instance := p.ToPollInstance()
+	if len(instance.Emojis) != 3 {
+		t.Fatalf("reaction mode: expected 3 emojis, got %d", len(instance.Emojis))
+	}
+}
+
+func TestToBlocksButtonModeBlockCount(t *testing.T) {
+	p := &CustomPoll{Name: "Test", Options: []string{"A", "B", "C"}, VotingMode: "button", Slug: "test"}
+	blocks := p.ToBlocks()
+	// header + prompt + 3 options + marker = 6
+	if len(blocks) != 6 {
+		t.Fatalf("expected 6 blocks, got %d", len(blocks))
+	}
+}
+
+func TestToBlocksButtonModeBlockCountWithDescription(t *testing.T) {
+	p := &CustomPoll{Name: "Test", Options: []string{"A", "B"}, VotingMode: "button", Slug: "test", Description: "Vote!"}
+	blocks := p.ToBlocks()
+	// header + prompt + 2 options + description + marker = 6
+	if len(blocks) != 6 {
+		t.Fatalf("expected 6 blocks, got %d", len(blocks))
+	}
+}
+
+func TestToBlocksButtonModeButtonsHavePollVoteActionID(t *testing.T) {
+	p := &CustomPoll{Name: "Test", Options: []string{"Alpha", "Beta"}, VotingMode: "button", Slug: "test-poll"}
+	blocks := p.ToBlocks()
+
+	// option sections start at index 2
+	for i := 0; i < 2; i++ {
+		section, ok := blocks[i+2].(*slack.SectionBlock)
+		if !ok {
+			t.Fatalf("block %d: expected *slack.SectionBlock, got %T", i+2, blocks[i+2])
+		}
+		if section.Accessory == nil {
+			t.Fatalf("block %d: expected button accessory, got nil", i+2)
+		}
+		btn := section.Accessory.ButtonElement
+		if btn == nil {
+			t.Fatalf("block %d: expected ButtonElement, got nil", i+2)
+		}
+		if btn.ActionID != "poll_vote" {
+			t.Fatalf("block %d: expected action_id poll_vote, got %q", i+2, btn.ActionID)
+		}
+	}
+}
+
+func TestToBlocksButtonModeButtonValueFormat(t *testing.T) {
+	p := &CustomPoll{Name: "Test", Options: []string{"Alpha", "Beta", "Gamma"}, VotingMode: "button", Slug: "my-poll"}
+	blocks := p.ToBlocks()
+
+	for i := 0; i < 3; i++ {
+		section := blocks[i+2].(*slack.SectionBlock)
+		btn := section.Accessory.ButtonElement
+		want := fmt.Sprintf("my-poll:%d", i)
+		if btn.Value != want {
+			t.Fatalf("option %d: expected button value %q, got %q", i, want, btn.Value)
+		}
+	}
+}
+
+func TestToBlocksButtonModeInitialCountIsZeroVotes(t *testing.T) {
+	p := &CustomPoll{Name: "Test", Options: []string{"A"}, VotingMode: "button", Slug: "test"}
+	blocks := p.ToBlocks()
+
+	section := blocks[2].(*slack.SectionBlock)
+	btn := section.Accessory.ButtonElement
+	if btn.Text == nil || btn.Text.Text != "0 votes" {
+		t.Fatalf("expected initial button label '0 votes', got %q", btn.Text.Text)
+	}
+}
+
+func TestToBlocksButtonModeMarkerUsesSlug(t *testing.T) {
+	p := &CustomPoll{Name: "Test", Options: []string{"A", "B"}, VotingMode: "button", Slug: "my-slug"}
+	blocks := p.ToBlocks()
+
+	marker, ok := blocks[len(blocks)-1].(*slack.ContextBlock)
+	if !ok {
+		t.Fatalf("expected last block to be *slack.ContextBlock, got %T", blocks[len(blocks)-1])
+	}
+	text := marker.ContextElements.Elements[0].(*slack.TextBlockObject)
+	if text.Text != "poll_marker:my-slug" {
+		t.Fatalf("expected poll_marker:my-slug, got %q", text.Text)
+	}
+}
+
+func TestToBlocksEmptyVotingModeDefaultsToReaction(t *testing.T) {
+	p := &CustomPoll{Name: "Test", Options: []string{"A", "B"}, Slug: "test"}
+	blocks := p.ToBlocks()
+
+	// reaction mode: none of the option blocks should have a button accessory
+	for i := 2; i < len(blocks)-1; i++ {
+		if section, ok := blocks[i].(*slack.SectionBlock); ok {
+			if section.Accessory != nil && section.Accessory.ButtonElement != nil {
+				t.Fatalf("block %d: reaction mode should not have button accessory", i)
+			}
+		}
 	}
 }

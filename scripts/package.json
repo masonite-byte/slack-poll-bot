@@ -1,0 +1,8 @@
+{
+  "name": "slack-poll-bot-scripts",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "gemoji": "^8.1.0"
+  }
+}
