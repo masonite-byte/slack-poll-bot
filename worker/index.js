@@ -501,8 +501,9 @@ function buildScheduleFieldBlocks(prefix, labelText, freq) {
       optional: true,
       hint: { type: 'plain_text', text: 'Select which days of the month to post.' },
       element: {
-        type: 'checkboxes',
+        type: 'multi_static_select',
         action_id: 'value',
+        placeholder: { type: 'plain_text', text: 'Select days' },
         options: dayOptions,
       },
     });
