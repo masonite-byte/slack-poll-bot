@@ -1,0 +1,18 @@
+{
+  "name": "Test Poll",
+  "options": [
+    "Soccer",
+    "basketball",
+    "Alien"
+  ],
+  "emojis": [
+    "soccer",
+    "basketball",
+    "alien"
+  ],
+  "author_id": "U08V6CJ885P",
+  "preamble": "Intro ________\n\n\n_____________",
+  "description": "Description _\n\n\n____________",
+  "voting_mode": "button",
+  "channel_id": "C0BAL95D0U9"
+}
