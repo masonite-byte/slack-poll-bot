@@ -1,4 +1,4 @@
-import { which as emojiWhich } from 'node-emoji';
+import { which as emojiWhich, get as emojiGet } from 'node-emoji';
 
 const HELP_TEXT = [
   'Supported slash commands:',
@@ -212,6 +212,8 @@ const SLACK_OVERRIDES = {
   '🚵': 'mountain_bicyclist',
   '🚣': 'rowboat',
   '⛹️': 'basketball_player',
+  // node-emoji uses a different name than Slack
+  '🤖': 'robot_face',
   // node-emoji has no entry for these — provide Slack names directly
   '🤸': 'person_doing_cartwheel',
   '🧘': 'person_in_lotus_position',
@@ -1183,10 +1185,16 @@ async function handleInteraction(request, env) {
   const options = [];
   const emojis = [];
   for (const line of optionsRaw.split('\n').map(l => l.trim()).filter(Boolean)) {
-    // :emoji_name: Label
+    // :emoji_name: Label — normalize through node-emoji so names like :robot: → robot_face
     const namedMatch = line.match(/^:([a-z0-9_+\-]+):\s*(.+)$/);
     if (namedMatch) {
-      emojis.push(namedMatch[1]);
+      let emojiName = namedMatch[1];
+      const char = emojiGet(emojiName);
+      if (char) {
+        const canonical = unicodeToSlack(char);
+        if (canonical) emojiName = canonical;
+      }
+      emojis.push(emojiName);
       options.push(namedMatch[2].trim());
       continue;
     }
