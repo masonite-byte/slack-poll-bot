@@ -485,6 +485,7 @@ function buildScheduleFieldBlocks(prefix, labelText, freq) {
           { text: { type: 'plain_text', text: 'Saturday' }, value: 'saturday' },
           { text: { type: 'plain_text', text: 'Sunday' }, value: 'sunday' },
         ],
+        initial_options: [{ text: { type: 'plain_text', text: 'Monday' }, value: 'monday' }],
       },
     });
   }
@@ -505,6 +506,7 @@ function buildScheduleFieldBlocks(prefix, labelText, freq) {
         action_id: 'value',
         placeholder: { type: 'plain_text', text: 'Select days' },
         options: dayOptions,
+        initial_options: [{ text: { type: 'plain_text', text: monthDayOrdinal(1) }, value: '1' }],
       },
     });
   }
@@ -520,6 +522,7 @@ function buildScheduleFieldBlocks(prefix, labelText, freq) {
         type: 'timepicker',
         action_id: 'value',
         placeholder: { type: 'plain_text', text: 'Select time' },
+        initial_time: '09:00',
       },
     });
   }
