@@ -6,16 +6,26 @@ import { formatSchedule, buildButtonPollBlocks, slugify } from './index.js';
 
 describe('formatSchedule', () => {
   const cases = [
-    ['monday 09:00',     'Monday 9:00 AM CT'],
-    ['friday 17:00',     'Friday 5:00 PM CT'],
-    ['wednesday 12:00',  'Wednesday 12:00 PM CT'],
-    ['sunday 00:00',     'Sunday 12:00 AM CT'],
-    ['tuesday 09:30',    'Tuesday 9:30 AM CT'],
-    ['saturday 23:00',   'Saturday 11:00 PM CT'],
-    ['thursday 08:00',   'Thursday 8:00 AM CT'],
+    ['monday 09:00',                    'Monday at 9:00 AM CT'],
+    ['friday 17:00',                    'Friday at 5:00 PM CT'],
+    ['wednesday 12:00',                 'Wednesday at 12:00 PM CT'],
+    ['sunday 00:00',                    'Sunday at 12:00 AM CT'],
+    ['tuesday 09:30',                   'Tuesday at 9:30 AM CT'],
+    ['saturday 23:00',                  'Saturday at 11:00 PM CT'],
+    ['thursday 08:00',                  'Thursday at 8:00 AM CT'],
     // trailing timezone token is stripped before parsing
-    ['monday 09:00 CT',  'Monday 9:00 AM CT'],
-    ['MONDAY 09:00',     'Monday 9:00 AM CT'],
+    ['monday 09:00 CT',                 'Monday at 9:00 AM CT'],
+    ['MONDAY 09:00',                    'Monday at 9:00 AM CT'],
+    // multi-day weekly
+    ['monday wednesday friday 09:00',   'Monday, Wednesday, Friday at 9:00 AM CT'],
+    // daily
+    ['daily 08:00',                     'Daily at 8:00 AM CT'],
+    // monthly
+    ['monthly 1 09:00',                 'Monthly on the 1st at 9:00 AM CT'],
+    ['monthly 15 09:00',                'Monthly on the 15th at 9:00 AM CT'],
+    ['monthly 21 18:00',                'Monthly on the 21st at 6:00 PM CT'],
+    ['monthly 22 18:00',                'Monthly on the 22nd at 6:00 PM CT'],
+    ['monthly 23 18:00',                'Monthly on the 23rd at 6:00 PM CT'],
   ];
 
   for (const [input, expected] of cases) {

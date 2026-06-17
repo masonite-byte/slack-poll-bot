@@ -85,23 +85,55 @@ func main() {
 }
 
 // isDue returns true if now matches the poll's schedule string.
-// Supported format: "weekday HH:MM" or "weekday HH:MM CT" (e.g. "monday 09:00").
+// Formats:
+//   - "weekday HH:MM"             weekly on one day (e.g. "monday 09:00")
+//   - "weekday1 weekday2 HH:MM"   weekly on multiple days
+//   - "daily HH:MM"               every day at that hour
+//   - "monthly DAY HH:MM"         day-of-month (e.g. "monthly 15 09:00")
 func isDue(schedule string, now time.Time) bool {
 	parts := strings.Fields(strings.ToLower(schedule))
 	if len(parts) < 2 {
 		return false
 	}
 
-	wd, ok := map[string]time.Weekday{
+	if parts[0] == "daily" {
+		return matchesHour(parts[1], now)
+	}
+
+	if parts[0] == "monthly" {
+		if len(parts) < 3 {
+			return false
+		}
+		day, err := strconv.Atoi(parts[1])
+		return err == nil && now.Day() == day && matchesHour(parts[2], now)
+	}
+
+	// Weekly: one or more weekday names followed by HH:MM
+	weekdays := map[string]time.Weekday{
 		"sunday": time.Sunday, "monday": time.Monday, "tuesday": time.Tuesday,
 		"wednesday": time.Wednesday, "thursday": time.Thursday,
 		"friday": time.Friday, "saturday": time.Saturday,
-	}[parts[0]]
-	if !ok || now.Weekday() != wd {
+	}
+	timeIdx := -1
+	for i, p := range parts {
+		if strings.Contains(p, ":") {
+			timeIdx = i
+			break
+		}
+	}
+	if timeIdx < 0 {
 		return false
 	}
+	for _, dayStr := range parts[:timeIdx] {
+		if wd, ok := weekdays[dayStr]; ok && now.Weekday() == wd {
+			return matchesHour(parts[timeIdx], now)
+		}
+	}
+	return false
+}
 
-	hm := strings.SplitN(parts[1], ":", 2)
+func matchesHour(timeStr string, now time.Time) bool {
+	hm := strings.SplitN(timeStr, ":", 2)
 	if len(hm) != 2 {
 		return false
 	}
