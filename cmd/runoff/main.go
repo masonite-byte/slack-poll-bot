@@ -14,8 +14,8 @@ func main() {
 	client := slackclient.New()
 	result, err := runner.RunoffPoll(client)
 	if err != nil {
-		slog.Error("checkties failed", "error", err)
+		slog.Error("runoff failed", "error", err)
 		os.Exit(1)
 	}
-	slog.Info("checkties complete", "result", result)
+	slog.Info("runoff complete", "result", result)
 }

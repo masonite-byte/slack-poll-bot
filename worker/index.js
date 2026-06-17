@@ -479,7 +479,8 @@ async function handleSlashCommand(request, env) {
 
     case '/newpoll': {
       try {
-        const polls = await listPolls(env) || [];
+        const polls = await listPolls(env);
+        if (polls === null) return ephemeral('Failed to fetch polls. Please try again.');
         await openPostPollModal(triggerId, channelId, userId, polls, env);
         return new Response('', { status: 200 });
       } catch (e) {
@@ -490,7 +491,7 @@ async function handleSlashCommand(request, env) {
 
     case '/runoff':
       try {
-        await triggerWorkflow('check_ties.yml', env, { channel_id: channelId });
+        await triggerWorkflow('runoff.yml', env, { channel_id: channelId });
         return ephemeral('Checking for ties and posting runoff poll if needed. Check the channel shortly.');
       } catch (e) {
         console.error('runoff workflow error:', e);
@@ -553,44 +554,6 @@ async function handleSlashCommand(request, env) {
   }
 }
 
-// ── Scheduled handler (kept for future cron use) ──────────────────────────────
-
-function chicagoHour() {
-  return parseInt(
-    new Date().toLocaleString('en-US', { timeZone: 'America/Chicago', hour: 'numeric', hour12: false }),
-    10,
-  );
-}
-
-async function handleScheduled(cron, env) {
-  const hour = chicagoHour();
-
-  switch (cron) {
-    case '5 14 * * 1':
-    case '5 15 * * 1':
-      if (hour === 9) {
-        console.log('Triggering weekly poll post');
-        await triggerWorkflow('post_poll.yml', env, {});
-      } else {
-        console.log(`Skipping poll post — Chicago hour is ${hour}, expected 9`);
-      }
-      break;
-
-    case '0 22 * * 2':
-    case '0 23 * * 2':
-      if (hour === 17) {
-        console.log('Triggering results post');
-        await triggerWorkflow('post_results.yml', env, {});
-      } else {
-        console.log(`Skipping results post — Chicago hour is ${hour}, expected 17`);
-      }
-      break;
-
-    default:
-      console.warn('Unknown cron expression:', cron);
-  }
-}
-
 // ── Entry point ───────────────────────────────────────────────────────────────
 
 export default {
@@ -605,7 +568,4 @@ export default {
     return new Response('Not found', { status: 404 });
   },
 
-  async scheduled(event, env) {
-    await handleScheduled(event.cron, env);
-  },
 };
