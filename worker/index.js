@@ -3,12 +3,10 @@ const HELP_TEXT = [
   '/results   - show the current poll results.',
   '/newpoll   - pick and post a poll from a dropdown.',
   '/runoff    - start a runoff poll when tied.',
-  '/notify    - DM voters with their results.',
   '/delete    - permanently delete a custom poll (authors only).',
   '/create    - create a custom poll via a form.',
   '/polls     - list all available custom polls.',
   '/schedule  - show the weekly poll schedule.',
-  '/options   - list weekly poll options and emoji.',
   '/vote      - how to vote.',
   '/about     - about this bot.',
   '/ping      - check that the bot is alive.',
@@ -385,6 +383,53 @@ async function openResultsModal(triggerId, channelId, userId, polls, env) {
   if (!data.ok) throw new Error(`views.open failed: ${data.error}`);
 }
 
+async function openRunoffModal(triggerId, channelId, userId, polls, env) {
+  const options = [
+    { text: { type: 'plain_text', text: '🏃 Weekly Sports Poll' }, value: 'weekly' },
+    ...polls.map(slug => ({
+      text: { type: 'plain_text', text: slug.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') },
+      value: slug,
+    })),
+  ];
+
+  const modal = {
+    type: 'modal',
+    callback_id: 'run_runoff',
+    private_metadata: JSON.stringify({ channel_id: channelId, user_id: userId }),
+    title: { type: 'plain_text', text: 'Run a Runoff' },
+    submit: { type: 'plain_text', text: 'Run Runoff' },
+    close: { type: 'plain_text', text: 'Cancel' },
+    blocks: [
+      {
+        type: 'section',
+        text: { type: 'mrkdwn', text: 'This will check the selected poll for a tie and post a runoff if one is detected.' },
+      },
+      {
+        type: 'input',
+        block_id: 'poll_select',
+        label: { type: 'plain_text', text: 'Which poll has a tie?' },
+        element: {
+          type: 'static_select',
+          action_id: 'value',
+          placeholder: { type: 'plain_text', text: 'Select a poll…' },
+          options,
+        },
+      },
+    ],
+  };
+
+  const resp = await fetch('https://slack.com/api/views.open', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${env.SLACK_BOT_TOKEN}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ trigger_id: triggerId, view: modal }),
+  });
+  const data = await resp.json();
+  if (!data.ok) throw new Error(`views.open failed: ${data.error}`);
+}
+
 async function openDeleteModal(triggerId, channelId, userId, polls, env) {
   const options = polls.map(slug => ({
     text: { type: 'plain_text', text: slug.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') },
@@ -627,6 +672,29 @@ async function handleInteraction(request, env) {
     return new Response('', { status: 200 });
   }
 
+  // ── run_runoff: user selected a poll to run a runoff for ────────────────
+  if (callbackId === 'run_runoff') {
+    const selected = payload.view.state.values.poll_select?.value?.selected_option?.value || '';
+    const inputs = { channel_id: meta.channel_id || '' };
+    if (selected && selected !== 'weekly') inputs.poll_name = selected;
+
+    const dispatchPromise = triggerWorkflow('runoff.yml', env, inputs)
+      .then(() => {
+        if (meta.channel_id && meta.user_id) {
+          return postEphemeral(meta.channel_id, meta.user_id, '🗳️ Checking for ties and posting a runoff poll if needed. Check the channel shortly.', env);
+        }
+      })
+      .catch(err => {
+        console.error('run_runoff dispatch error:', err);
+        if (meta.channel_id && meta.user_id) {
+          return postEphemeral(meta.channel_id, meta.user_id, '❌ Failed to trigger runoff. Please try again.', env);
+        }
+      });
+
+    if (typeof env._ctx?.waitUntil === 'function') env._ctx.waitUntil(dispatchPromise);
+    return new Response('', { status: 200 });
+  }
+
   // ── create_poll: user submitted a new poll form ───────────────────────────
   if (callbackId !== 'create_poll') return new Response('', { status: 200 });
 
@@ -715,16 +783,25 @@ async function handleSlashCommand(request, env) {
     case '/help':
       return ephemeral(HELP_TEXT);
 
-    case '/options':
-      return ephemeral('Available weekly poll options:\n' + POLL_OPTIONS_TEXT);
-
     case '/vote':
-      return ephemeral(
-        'Vote by reacting to the current poll message with one of the following emojis:\n' +
-        POLL_OPTIONS_TEXT +
-        '\nFor custom polls, use the numbered reactions shown in the poll.\n' +
-        'Use /results to check the current tally.',
-      );
+      return ephemeral([
+        '🗳️ *How to Vote (Yes, We Know You Need This Explained)*',
+        '',
+        "Voting is done via emoji reactions. It is, objectively, the simplest possible interaction a human can perform — and yet, here we are.",
+        '',
+        '*Step 1:* Find the poll in the channel. It\'s the big block of text that starts with 📊. You\'ve probably scrolled past it already.',
+        '',
+        '*Step 2:* Hover over the poll message and click the emoji button (the little 🙂 that appears on the right). On mobile, long-press the message like you\'re trying to intimidate it.',
+        '',
+        '*Step 3:* Find and select the emoji that matches your choice. For the weekly poll, your options are:',
+        POLL_OPTIONS_TEXT,
+        '',
+        'For custom polls, the options are numbered — use 1️⃣ 2️⃣ 3️⃣ etc., exactly as shown in the poll message. The labels are right there. Read them.',
+        '',
+        '*Step 4:* That\'s it. You\'re done. There is no step 5. Please rejoin society.',
+        '',
+        '_One reaction per option. Voting for everything is not a strategy, it\'s a cry for help. Use `/results` to watch your pick lose in real time._',
+      ].join('\n'));
 
     case '/results': {
       const resultsWork = async () => {
@@ -756,23 +833,20 @@ async function handleSlashCommand(request, env) {
       return new Response('', { status: 200 });
     }
 
-    case '/runoff':
-      try {
-        await triggerWorkflow('runoff.yml', env, { channel_id: channelId });
-        return ephemeral('Checking for ties and posting runoff poll if needed. Check the channel shortly.');
-      } catch (e) {
-        console.error('runoff workflow error:', e);
-        return ephemeral('Failed to trigger runoff. Please try again.');
-      }
-
-    case '/notify':
-      try {
-        await triggerWorkflow('notify_voters.yml', env, { channel_id: channelId });
-        return ephemeral('Notifying voters with their results. Check your DMs!');
-      } catch (e) {
-        console.error('notify workflow error:', e);
-        return ephemeral('Failed to notify voters. Please try again.');
-      }
+    case '/runoff': {
+      const runoffWork = async () => {
+        try {
+          const polls = await listPolls(env) || [];
+          await openRunoffModal(triggerId, channelId, userId, polls, env);
+        } catch (e) {
+          console.error('runoff modal error:', e);
+          await postEphemeral(channelId, userId, '❌ Failed to open runoff selector. Please try again.', env);
+        }
+      };
+      const rof = runoffWork();
+      if (typeof env._ctx?.waitUntil === 'function') env._ctx.waitUntil(rof);
+      return new Response('', { status: 200 });
+    }
 
     case '/delete': {
       const deleteWork = async () => {
