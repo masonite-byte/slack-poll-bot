@@ -2030,13 +2030,16 @@ function buildButtonPollBlocks(pollData, counts, slug) {
     blocks.push({
       type: 'section',
       text: { type: 'mrkdwn', text: `    :${emoji}: ${pollData.options[i]}` },
-      accessory: {
+    });
+    blocks.push({
+      type: 'actions',
+      elements: [{
         type: 'button',
         text: { type: 'plain_text', text: voteText },
         style: 'primary',
         action_id: 'poll_vote',
         value: `${slug}:${i}`,
-      },
+      }],
     });
   }
   if (pollData.description) {
@@ -2062,32 +2065,49 @@ async function postButtonPollResults(slug, pollData, channelId, userId, env) {
     messageTs = key.name.substring(prefix.length);
   }
 
-  const totalVotes = Object.keys(allVotes).length;
-  if (totalVotes === 0) {
-    await postEphemeral(channelId, userId, `📊 No votes have been cast yet for *${pollData.name}*.`, env);
-    return;
-  }
-
   const counts = {};
   for (const v of Object.values(allVotes)) counts[v] = (counts[v] || 0) + 1;
 
-  const maxCount = Math.max(...Object.values(counts));
-  const winners = pollData.options.filter((_, i) => counts[i] === maxCount);
+  // Build results array sorted by count descending (matches Go BuildResultsBlocks order)
+  const results = pollData.options.map((label, i) => ({
+    emoji: (pollData.emojis && pollData.emojis[i]) || NUMBER_EMOJIS[i] || 'question',
+    label,
+    count: counts[i] || 0,
+  })).sort((a, b) => b.count - a.count);
 
-  let text = `@channel 📊 *Final Poll Results: ${pollData.name}*\n\n`;
-  for (let i = 0; i < pollData.options.length; i++) {
-    const c = counts[i] || 0;
-    const trophy = c === maxCount ? ' 🏆' : '';
-    text += `*${pollData.options[i]}* — ${c} vote${c !== 1 ? 's' : ''}${trophy}\n`;
+  const maxCount = results[0].count;
+  const winners = results.filter(r => r.count === maxCount).map(r => r.label);
+
+  let summary;
+  if (maxCount <= 0) {
+    summary = '@channel: No votes have been cast yet.';
+  } else if (winners.length === 1) {
+    summary = `@channel: Top event: ${winners[0]}.`;
+  } else {
+    summary = `@channel: It's a tie between ${winners.join(' and ')}.`;
   }
-  text += winners.length > 1
-    ? `\nIt's a tie between ${winners.map(w => `*${w}*`).join(' and ')}!`
-    : `\nWinner: *${winners[0]}* with ${maxCount} vote${maxCount !== 1 ? 's' : ''}!`;
+
+  // Blocks matching Go's BuildResultsBlocks exactly
+  const blocks = [
+    { type: 'section', text: { type: 'mrkdwn', text: '📊 *Final Poll Results Are In!*' } },
+    ...results.map(r => ({
+      type: 'section',
+      text: { type: 'mrkdwn', text: `    :${r.emoji}: ${r.label} — ${r.count} vote${r.count !== 1 ? 's' : ''}` },
+    })),
+    { type: 'section', text: { type: 'mrkdwn', text: summary } },
+  ];
+
+  // Fallback text matching Go's BuildResults format
+  const fallbackLines = ['📊 *Final Poll Results Are In!*'];
+  for (const r of results) {
+    fallbackLines.push(`    :${r.emoji}: ${r.label} received ${r.count} votes`);
+  }
+  fallbackLines.push(summary.replace('@channel: ', ''));
 
   await fetch('https://slack.com/api/chat.postMessage', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${env.SLACK_BOT_TOKEN}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ channel: channelId, text, mrkdwn: true }),
+    body: JSON.stringify({ channel: channelId, text: fallbackLines.join('\n'), blocks }),
   });
 
   if (messageTs) {
@@ -2217,7 +2237,7 @@ async function openModal(triggerId, channelId, userId, env) {
         type: 'input',
         block_id: 'poll_options',
         label: { type: 'plain_text', text: 'Options (one per line, up to 9)' },
-        hint: { type: 'plain_text', text: 'One option per line. Prefix with an emoji to set the reaction: use :emoji_name: or paste a raw emoji (e.g. "⚽ Soccer" or ":soccer: Soccer"). Without an emoji, options are numbered 1️⃣ 2️⃣ 3️⃣ automatically.' },
+        hint: { type: 'plain_text', text: 'One option per line. Optionally prefix with a raw emoji (e.g. ⚽ Soccer) or a shortcode in colons (e.g. :name: Soccer) to set the reaction. Without a prefix, options are auto-numbered 1️⃣ 2️⃣ 3️⃣.' },
         element: {
           type: 'plain_text_input',
           action_id: 'value',

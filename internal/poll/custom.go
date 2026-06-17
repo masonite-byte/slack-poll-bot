@@ -123,17 +123,17 @@ func (p *CustomPoll) toButtonBlocks() []slack.Block {
 	blocks := []slack.Block{header, prompt}
 
 	for i, opt := range p.Options {
+		blocks = append(blocks, slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("    :%s: %s", p.emojiAt(i), opt), false, false),
+			nil, nil,
+		))
 		btn := slack.NewButtonBlockElement(
 			"poll_vote",
 			fmt.Sprintf("%s:%d", p.Slug, i),
 			slack.NewTextBlockObject("plain_text", "0 votes", false, false),
 		)
 		btn.Style = "primary"
-		blocks = append(blocks, slack.NewSectionBlock(
-			slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("    :%s: %s", p.emojiAt(i), opt), false, false),
-			nil,
-			slack.NewAccessory(btn),
-		))
+		blocks = append(blocks, slack.NewActionBlock("", btn))
 	}
 
 	if p.Description != "" {
