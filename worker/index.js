@@ -70,18 +70,29 @@ async function buildScheduleText(env) {
   return lines.join('\n');
 }
 
-// formatSchedule converts "monday 09:00" → "Monday 9:00 AM"
+// formatSchedule converts schedule strings to human-readable CT times.
+// Handles: "monday 09:00", "monday wednesday 09:00", "daily 09:00", "monthly 15 09:00"
 function formatSchedule(schedule) {
-  const parts = schedule.trim().toLowerCase().split(/\s+/);
+  const parts = schedule.trim().toLowerCase().replace(/\s+(ct|cdt|cst)$/i, '').split(/\s+/);
   if (parts.length < 2) return schedule;
-  const day = parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
-  const [hStr, mStr] = parts[1].split(':');
-  const h = parseInt(hStr, 10);
-  const m = mStr || '00';
-  const ampm = h >= 12 ? 'PM' : 'AM';
-  const h12 = h % 12 || 12;
-  const mDisplay = `:${m}`;
-  return `${day} ${h12}${mDisplay} ${ampm} CT`;
+  const fmtTime = (hhmm) => {
+    const [hStr, mStr = '00'] = hhmm.split(':');
+    const h = parseInt(hStr, 10);
+    const h12 = h % 12 || 12;
+    return `${h12}:${mStr} ${h >= 12 ? 'PM' : 'AM'}`;
+  };
+  if (parts[0] === 'daily') return `Daily at ${fmtTime(parts[1])} CT`;
+  if (parts[0] === 'monthly') {
+    if (parts.length < 3) return schedule;
+    const d = parseInt(parts[1], 10);
+    const ord = [11, 12, 13].includes(d) ? 'th' : d % 10 === 1 ? 'st' : d % 10 === 2 ? 'nd' : d % 10 === 3 ? 'rd' : 'th';
+    return `Monthly on the ${d}${ord} at ${fmtTime(parts[2])} CT`;
+  }
+  // Weekly: one or more weekday names then HH:MM
+  const timeIdx = parts.findIndex(p => /^\d{1,2}:\d{2}$/.test(p));
+  if (timeIdx < 0) return schedule;
+  const days = parts.slice(0, timeIdx).map(d => d.charAt(0).toUpperCase() + d.slice(1));
+  return `${days.join(', ')} at ${fmtTime(parts[timeIdx])} CT`;
 }
 
 // ── Signature verification ────────────────────────────────────────────────────
@@ -2287,7 +2298,7 @@ async function openModal(triggerId, channelId, userId, env) {
       {
         type: 'input',
         block_id: 'poll_preamble',
-        label: { type: 'plain_text', text: 'Intro (optional)' },
+        label: { type: 'plain_text', text: 'Intro' },
         optional: true,
         element: {
           type: 'plain_text_input',
@@ -2311,7 +2322,7 @@ async function openModal(triggerId, channelId, userId, env) {
       {
         type: 'input',
         block_id: 'poll_description',
-        label: { type: 'plain_text', text: 'Description (optional)' },
+        label: { type: 'plain_text', text: 'Description' },
         optional: true,
         element: {
           type: 'plain_text_input',
@@ -2342,14 +2353,92 @@ async function openModal(triggerId, channelId, userId, env) {
       },
       {
         type: 'input',
-        block_id: 'poll_schedule',
-        label: { type: 'plain_text', text: 'Recurring Schedule (optional)' },
+        block_id: 'schedule_frequency',
+        label: { type: 'plain_text', text: 'Recurring Schedule' },
         optional: true,
-        hint: { type: 'plain_text', text: 'Day and time in CT (24-hour clock). Leave blank for manual posting only.' },
         element: {
-          type: 'plain_text_input',
+          type: 'static_select',
           action_id: 'value',
-          placeholder: { type: 'plain_text', text: 'e.g. monday 09:00' },
+          placeholder: { type: 'plain_text', text: 'No recurring schedule' },
+          options: [
+            { text: { type: 'plain_text', text: 'Daily' }, value: 'daily' },
+            { text: { type: 'plain_text', text: 'Weekly' }, value: 'weekly' },
+            { text: { type: 'plain_text', text: 'Monthly' }, value: 'monthly' },
+          ],
+        },
+      },
+      {
+        type: 'input',
+        block_id: 'schedule_days_of_week',
+        label: { type: 'plain_text', text: 'Days of Week' },
+        optional: true,
+        hint: { type: 'plain_text', text: 'For Weekly schedules — select which days to post.' },
+        element: {
+          type: 'checkboxes',
+          action_id: 'value',
+          options: [
+            { text: { type: 'plain_text', text: 'Monday' }, value: 'monday' },
+            { text: { type: 'plain_text', text: 'Tuesday' }, value: 'tuesday' },
+            { text: { type: 'plain_text', text: 'Wednesday' }, value: 'wednesday' },
+            { text: { type: 'plain_text', text: 'Thursday' }, value: 'thursday' },
+            { text: { type: 'plain_text', text: 'Friday' }, value: 'friday' },
+            { text: { type: 'plain_text', text: 'Saturday' }, value: 'saturday' },
+            { text: { type: 'plain_text', text: 'Sunday' }, value: 'sunday' },
+          ],
+        },
+      },
+      {
+        type: 'input',
+        block_id: 'schedule_day_of_month',
+        label: { type: 'plain_text', text: 'Day of Month' },
+        optional: true,
+        hint: { type: 'plain_text', text: 'For Monthly schedules — which day of the month to post.' },
+        element: {
+          type: 'static_select',
+          action_id: 'value',
+          placeholder: { type: 'plain_text', text: 'e.g. 1st' },
+          options: [
+            { text: { type: 'plain_text', text: '1st' }, value: '1' },
+            { text: { type: 'plain_text', text: '2nd' }, value: '2' },
+            { text: { type: 'plain_text', text: '3rd' }, value: '3' },
+            { text: { type: 'plain_text', text: '4th' }, value: '4' },
+            { text: { type: 'plain_text', text: '5th' }, value: '5' },
+            { text: { type: 'plain_text', text: '6th' }, value: '6' },
+            { text: { type: 'plain_text', text: '7th' }, value: '7' },
+            { text: { type: 'plain_text', text: '8th' }, value: '8' },
+            { text: { type: 'plain_text', text: '9th' }, value: '9' },
+            { text: { type: 'plain_text', text: '10th' }, value: '10' },
+            { text: { type: 'plain_text', text: '11th' }, value: '11' },
+            { text: { type: 'plain_text', text: '12th' }, value: '12' },
+            { text: { type: 'plain_text', text: '13th' }, value: '13' },
+            { text: { type: 'plain_text', text: '14th' }, value: '14' },
+            { text: { type: 'plain_text', text: '15th' }, value: '15' },
+            { text: { type: 'plain_text', text: '16th' }, value: '16' },
+            { text: { type: 'plain_text', text: '17th' }, value: '17' },
+            { text: { type: 'plain_text', text: '18th' }, value: '18' },
+            { text: { type: 'plain_text', text: '19th' }, value: '19' },
+            { text: { type: 'plain_text', text: '20th' }, value: '20' },
+            { text: { type: 'plain_text', text: '21st' }, value: '21' },
+            { text: { type: 'plain_text', text: '22nd' }, value: '22' },
+            { text: { type: 'plain_text', text: '23rd' }, value: '23' },
+            { text: { type: 'plain_text', text: '24th' }, value: '24' },
+            { text: { type: 'plain_text', text: '25th' }, value: '25' },
+            { text: { type: 'plain_text', text: '26th' }, value: '26' },
+            { text: { type: 'plain_text', text: '27th' }, value: '27' },
+            { text: { type: 'plain_text', text: '28th' }, value: '28' },
+          ],
+        },
+      },
+      {
+        type: 'input',
+        block_id: 'schedule_time',
+        label: { type: 'plain_text', text: 'Time (CT)' },
+        optional: true,
+        hint: { type: 'plain_text', text: 'Central Time. Note: there may be up to 3 hr delays depending on GitHub Actions traffic.' },
+        element: {
+          type: 'timepicker',
+          action_id: 'value',
+          placeholder: { type: 'plain_text', text: 'Select time' },
         },
       },
     ],
@@ -2819,14 +2908,28 @@ async function handleInteraction(request, env) {
   const optionsRaw = values.poll_options?.value?.value?.trim() || '';
   const descriptionRaw = values.poll_description?.value?.value?.trim() || '';
   const votingModeRaw = values.voting_mode?.value?.selected_option?.value || 'reaction';
-  const scheduleRaw = values.poll_schedule?.value?.value?.trim() || '';
+  const scheduleFreq = values.schedule_frequency?.value?.selected_option?.value || '';
+  const scheduleDaysOfWeek = (values.schedule_days_of_week?.value?.selected_options || []).map(o => o.value);
+  const scheduleDayOfMonth = values.schedule_day_of_month?.value?.selected_option?.value || '';
+  const scheduleTime = values.schedule_time?.value?.value || '';
 
   if (!nameRaw) return modalError('poll_name', 'Poll name is required.');
 
-  if (scheduleRaw) {
-    const schedulePattern = /^(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\s+\d{1,2}:\d{2}(\s+(CT|CDT|CST))?$/i;
-    if (!schedulePattern.test(scheduleRaw)) {
-      return modalError('poll_schedule', 'Use format: weekday HH:MM (e.g. monday 09:00)');
+  let scheduleRaw = '';
+  if (scheduleFreq) {
+    if (!scheduleTime) return modalError('schedule_time', 'Please select a time for the schedule.');
+    if (scheduleFreq === 'weekly' && scheduleDaysOfWeek.length === 0) {
+      return modalError('schedule_days_of_week', 'Please select at least one day for a weekly schedule.');
+    }
+    if (scheduleFreq === 'monthly' && !scheduleDayOfMonth) {
+      return modalError('schedule_day_of_month', 'Please select a day of the month for a monthly schedule.');
+    }
+    if (scheduleFreq === 'daily') {
+      scheduleRaw = `daily ${scheduleTime}`;
+    } else if (scheduleFreq === 'weekly') {
+      scheduleRaw = `${scheduleDaysOfWeek.join(' ')} ${scheduleTime}`;
+    } else if (scheduleFreq === 'monthly') {
+      scheduleRaw = `monthly ${scheduleDayOfMonth} ${scheduleTime}`;
     }
   }
 
