@@ -1,0 +1,16 @@
+{
+  "name": "Test 2",
+  "options": [
+    "testing",
+    "button spacing"
+  ],
+  "emojis": [
+    "+1",
+    "-1"
+  ],
+  "author_id": "U08V6CJ885P",
+  "preamble": "This is a header for the button option",
+  "description": "This is a footer for the button based poll",
+  "voting_mode": "button",
+  "channel_id": "C0BAL95D0U9"
+}
