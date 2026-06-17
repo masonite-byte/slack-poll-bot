@@ -1,0 +1,11 @@
+{
+  "name": "Test Poll #1",
+  "options": [
+    "😃 Happy",
+    "Thumbs down :("
+  ],
+  "emojis": [
+    "one",
+    "-1"
+  ]
+}
