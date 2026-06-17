@@ -9,7 +9,8 @@
     "boom"
   ],
   "author_id": "U08V6CJ885P",
-  "preamble": "What do you think of clankers???\n\n(This is a custom poll designed with Poll-inator to test configurability)",
+  "preamble": "What do you think of clankers???",
+  "description": "(This is a custom poll designed with Poll-inator to test configurability)",
   "voting_mode": "button",
   "channel_id": "C0BAL95D0U9"
 }
