@@ -162,3 +162,17 @@ func TestRunPostCustomPollSeedsReactions(t *testing.T) {
 		t.Fatalf("expected reactions [one two three], got %v", m.Added)
 	}
 }
+
+func TestRunPostCustomPollButtonModeNoReactionsSeeded(t *testing.T) {
+	m := &testutil.MockAPI{Ts: "456"}
+	p := &poll.CustomPoll{Name: "Button Poll", Options: []string{"A", "B"}, Slug: "button-poll", VotingMode: "button"}
+	if err := RunPostCustomPoll(m, p); err != nil {
+		t.Fatalf("RunPostCustomPoll error: %v", err)
+	}
+	if m.Posted == "" {
+		t.Fatal("expected poll message to be posted")
+	}
+	if len(m.Added) != 0 {
+		t.Fatalf("button mode: expected no seeded reactions, got %v", m.Added)
+	}
+}

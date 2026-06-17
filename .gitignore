@@ -43,3 +43,9 @@ config.local.json
 # Cloudflare / Wrangler
 # =========================
 .wrangler/
+
+# =========================
+# Scripts (emoji map generator)
+# =========================
+scripts/node_modules/
+scripts/package-lock.json

@@ -22,6 +22,9 @@ type CustomPoll struct {
 	Emojis      []string `json:"emojis,omitempty"`      // parallel to Options; falls back to number emojis if absent
 	Preamble    string   `json:"preamble,omitempty"`    // optional text shown above the options
 	Description string   `json:"description,omitempty"` // optional text shown below the options
+	VotingMode  string   `json:"voting_mode,omitempty"` // "reaction" (default) or "button"
+	Schedule    string   `json:"schedule,omitempty"`    // e.g. "monday 09:00" — used by schedule_polls workflow
+	ChannelID   string   `json:"channel_id,omitempty"`  // Slack channel to post to on schedule; falls back to SLACK_CHANNEL_ID env
 	Slug        string   `json:"-"`                     // derived from filename, not stored in JSON
 }
 
@@ -40,12 +43,17 @@ func LoadCustomPoll(name string) (*CustomPoll, error) {
 }
 
 // ToPollInstance returns the fallback text and emoji list for seeding reactions.
+// For button-mode polls the emoji list is empty — no reactions are seeded.
 func (p *CustomPoll) ToPollInstance() PollInstance {
+	if p.VotingMode == "button" {
+		text := fmt.Sprintf("@channel: 📊 *%s*\n\nClick a button to cast your vote.", p.Name)
+		return PollInstance{Text: text}
+	}
 	text := fmt.Sprintf("@channel: 📊 *%s*\n\nReact to vote:", p.Name)
 	emojis := make([]string, 0, len(p.Options))
 	for i, opt := range p.Options {
 		emoji := p.emojiAt(i)
-		text += fmt.Sprintf("\n    :%s: %s", emoji, opt)
+		text += fmt.Sprintf("\n    :%s: %s", emoji, opt)
 		emojis = append(emojis, emoji)
 	}
 	return PollInstance{Text: text, Emojis: emojis}
@@ -53,6 +61,9 @@ func (p *CustomPoll) ToPollInstance() PollInstance {
 
 // ToBlocks returns Block Kit blocks for the custom poll.
 func (p *CustomPoll) ToBlocks() []slack.Block {
+	if p.VotingMode == "button" {
+		return p.toButtonBlocks()
+	}
 	preamble := p.Preamble
 	if preamble == "" {
 		preamble = "React to vote!"
@@ -80,6 +91,57 @@ func (p *CustomPoll) ToBlocks() []slack.Block {
 			nil, nil,
 		))
 	}
+	marker := "poll_marker:custom"
+	if p.Slug != "" {
+		marker = "poll_marker:" + p.Slug
+	}
+	blocks = append(blocks, slack.NewContextBlock("poll_marker",
+		slack.NewTextBlockObject("mrkdwn", marker, false, false),
+	))
+	return blocks
+}
+
+// toButtonBlocks returns Block Kit blocks for a button-voting poll.
+// Each option is a section block with a button accessory showing the current vote count (0 when first posted).
+// The Worker updates the message in-place when voters click buttons.
+func (p *CustomPoll) toButtonBlocks() []slack.Block {
+	preamble := p.Preamble
+	if preamble == "" {
+		preamble = "Click a button to cast your vote:"
+	} else {
+		preamble = preamble + "\n\nClick a button to cast your vote:"
+	}
+
+	header := slack.NewSectionBlock(
+		slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("*📊 %s*", p.Name), false, false),
+		nil, nil,
+	)
+	prompt := slack.NewSectionBlock(
+		slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("@channel: %s", preamble), false, false),
+		nil, nil,
+	)
+	blocks := []slack.Block{header, prompt}
+
+	for i, opt := range p.Options {
+		btn := slack.NewButtonBlockElement(
+			"poll_vote",
+			fmt.Sprintf("%s:%d", p.Slug, i),
+			slack.NewTextBlockObject("plain_text", "0 votes", false, false),
+		)
+		blocks = append(blocks, slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("    :%s: %s", p.emojiAt(i), opt), false, false),
+			nil,
+			slack.NewAccessory(btn),
+		))
+	}
+
+	if p.Description != "" {
+		blocks = append(blocks, slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn", p.Description, false, false),
+			nil, nil,
+		))
+	}
+
 	marker := "poll_marker:custom"
 	if p.Slug != "" {
 		marker = "poll_marker:" + p.Slug
