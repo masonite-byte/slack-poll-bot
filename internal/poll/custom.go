@@ -63,6 +63,7 @@ type CustomPoll struct {
 	Preamble    string   `json:"preamble,omitempty"`    // optional text shown above the options
 	Description string   `json:"description,omitempty"` // optional text shown below the options
 	VotingMode  string   `json:"voting_mode,omitempty"` // "reaction" (default) or "button"
+	Anonymous   *bool    `json:"anonymous,omitempty"`   // nil/true = hide voters; false = show voters under each option
 	Schedule        string `json:"schedule,omitempty"`         // e.g. "monday 09:00" — used by schedule_polls workflow
 	ResultsSchedule string `json:"results_schedule,omitempty"` // e.g. "wednesday 17:00" — when to post results
 	ChannelID       string `json:"channel_id,omitempty"`       // Slack channel to post to on schedule; falls back to SLACK_CHANNEL_ID env

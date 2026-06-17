@@ -258,7 +258,8 @@ function slugify(name) {
 
 // Builds Block Kit blocks for a button-mode poll, reflecting current vote counts.
 // counts: { [optionIndex]: voteCount }
-function buildButtonPollBlocks(pollData, counts, slug) {
+// voters: { [optionIndex]: userId[] } — only used when pollData.anonymous === false
+function buildButtonPollBlocks(pollData, counts, slug, voters = {}) {
   const blocks = [];
   blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `*📊 ${pollData.name}*` } });
   const preamble = pollData.preamble || 'Click a button to cast your vote:';
@@ -278,6 +279,12 @@ function buildButtonPollBlocks(pollData, counts, slug) {
         value: `${slug}:${i}`,
       },
     });
+    if (pollData.anonymous === false && voters[i] && voters[i].length > 0) {
+      blocks.push({
+        type: 'context',
+        elements: [{ type: 'mrkdwn', text: `👥 ${voters[i].map(uid => `<@${uid}>`).join(' ')}` }],
+      });
+    }
   }
   if (pollData.description) {
     blocks.push({ type: 'section', text: { type: 'mrkdwn', text: pollData.description } });
@@ -400,12 +407,13 @@ async function pollFileExists(slug, env) {
   return resp.ok;
 }
 
-async function commitPollFile(slug, name, options, emojis, preamble, description, authorId, votingMode, schedule, resultsSchedule, channelId, env) {
+async function commitPollFile(slug, name, options, emojis, preamble, description, authorId, votingMode, schedule, resultsSchedule, channelId, anonymous, env) {
   const url = `https://api.github.com/repos/${env.GITHUB_REPO}/contents/polls/${slug}.json`;
   const pollData = { name, options, emojis, author_id: authorId };
   if (preamble) pollData.preamble = preamble;
   if (description) pollData.description = description;
   if (votingMode && votingMode !== 'reaction') pollData.voting_mode = votingMode;
+  if (votingMode === 'button' && anonymous === false) pollData.anonymous = false;
   if (schedule) pollData.schedule = schedule.toLowerCase().trim();
   if (resultsSchedule) pollData.results_schedule = resultsSchedule.toLowerCase().trim();
   if (channelId) pollData.channel_id = channelId;
@@ -554,7 +562,7 @@ function buildScheduleFieldBlocks(prefix, labelText, freq) {
   return blocks;
 }
 
-function buildCreatePollModal(channelId, userId, postFreq, resultsFreq) {
+function buildCreatePollModal(channelId, userId, postFreq, resultsFreq, votingMode = '') {
   return {
     type: 'modal',
     callback_id: 'create_poll',
@@ -613,10 +621,13 @@ function buildCreatePollModal(channelId, userId, postFreq, resultsFreq) {
         type: 'input',
         block_id: 'voting_mode',
         label: { type: 'plain_text', text: 'Voting Method' },
+        dispatch_action: true,
         element: {
           type: 'radio_buttons',
-          action_id: 'value',
-          initial_option: { text: { type: 'plain_text', text: 'Reaction-based — voters react with emojis' }, value: 'reaction' },
+          action_id: 'voting_mode_select',
+          initial_option: votingMode === 'button'
+            ? { text: { type: 'plain_text', text: 'Button-based — voters click buttons, live counts shown' }, value: 'button' }
+            : { text: { type: 'plain_text', text: 'Reaction-based — voters react with emojis' }, value: 'reaction' },
           options: [
             {
               text: { type: 'plain_text', text: 'Reaction-based — voters react with emojis' },
@@ -629,6 +640,18 @@ function buildCreatePollModal(channelId, userId, postFreq, resultsFreq) {
           ],
         },
       },
+      ...(votingMode === 'button' ? [{
+        type: 'input',
+        block_id: 'show_voters',
+        label: { type: 'plain_text', text: 'Voter Visibility' },
+        optional: true,
+        element: {
+          type: 'checkboxes',
+          action_id: 'value',
+          options: [{ text: { type: 'plain_text', text: 'Show who voted under each option' }, value: 'show' }],
+          initial_options: [{ text: { type: 'plain_text', text: 'Show who voted under each option' }, value: 'show' }],
+        },
+      }] : []),
       ...buildScheduleFieldBlocks('schedule', 'Post Schedule', postFreq),
       ...buildScheduleFieldBlocks('results', 'Results Schedule', resultsFreq),
     ],
@@ -943,8 +966,9 @@ async function handleInteraction(request, env) {
         await updateMessage(channelId, messageTs, `Deletion of *${slug}* cancelled.`, env);
       };
       if (typeof env._ctx?.waitUntil === 'function') env._ctx.waitUntil(work());
-    } else if (action?.action_id === 'schedule_frequency_select') {
-      const selectedFreq = action.selected_option?.value || '';
+    } else if (action?.action_id === 'voting_mode_select') {
+      const selectedVotingMode = action.selected_option?.value || '';
+      const currentPostFreq = payload.view?.state?.values?.schedule_frequency?.schedule_frequency_select?.selected_option?.value || '';
       const currentResultsFreq = payload.view?.state?.values?.results_frequency?.results_frequency_select?.selected_option?.value || '';
       const viewId = payload.view?.id;
       let viewMeta = {};
@@ -955,14 +979,15 @@ async function handleInteraction(request, env) {
           headers: { 'Authorization': `Bearer ${env.SLACK_BOT_TOKEN}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
             view_id: viewId,
-            view: buildCreatePollModal(viewMeta.channel_id || '', viewMeta.user_id || '', selectedFreq, currentResultsFreq),
+            view: buildCreatePollModal(viewMeta.channel_id || '', viewMeta.user_id || '', currentPostFreq, currentResultsFreq, selectedVotingMode),
           }),
         });
       };
       if (typeof env._ctx?.waitUntil === 'function') env._ctx.waitUntil(work());
-    } else if (action?.action_id === 'results_frequency_select') {
-      const selectedResultsFreq = action.selected_option?.value || '';
-      const currentPostFreq = payload.view?.state?.values?.schedule_frequency?.schedule_frequency_select?.selected_option?.value || '';
+    } else if (action?.action_id === 'schedule_frequency_select') {
+      const selectedFreq = action.selected_option?.value || '';
+      const currentResultsFreq = payload.view?.state?.values?.results_frequency?.results_frequency_select?.selected_option?.value || '';
+      const currentVotingMode = payload.view?.state?.values?.voting_mode?.voting_mode_select?.selected_option?.value || '';
       const viewId = payload.view?.id;
       let viewMeta = {};
       try { viewMeta = JSON.parse(payload.view?.private_metadata || '{}'); } catch {}
@@ -972,7 +997,25 @@ async function handleInteraction(request, env) {
           headers: { 'Authorization': `Bearer ${env.SLACK_BOT_TOKEN}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
             view_id: viewId,
-            view: buildCreatePollModal(viewMeta.channel_id || '', viewMeta.user_id || '', currentPostFreq, selectedResultsFreq),
+            view: buildCreatePollModal(viewMeta.channel_id || '', viewMeta.user_id || '', selectedFreq, currentResultsFreq, currentVotingMode),
+          }),
+        });
+      };
+      if (typeof env._ctx?.waitUntil === 'function') env._ctx.waitUntil(work());
+    } else if (action?.action_id === 'results_frequency_select') {
+      const selectedResultsFreq = action.selected_option?.value || '';
+      const currentPostFreq = payload.view?.state?.values?.schedule_frequency?.schedule_frequency_select?.selected_option?.value || '';
+      const currentVotingMode = payload.view?.state?.values?.voting_mode?.voting_mode_select?.selected_option?.value || '';
+      const viewId = payload.view?.id;
+      let viewMeta = {};
+      try { viewMeta = JSON.parse(payload.view?.private_metadata || '{}'); } catch {}
+      const work = async () => {
+        await fetch('https://slack.com/api/views.update', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${env.SLACK_BOT_TOKEN}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            view_id: viewId,
+            view: buildCreatePollModal(viewMeta.channel_id || '', viewMeta.user_id || '', currentPostFreq, selectedResultsFreq, currentVotingMode),
           }),
         });
       };
@@ -998,9 +1041,14 @@ async function handleInteraction(request, env) {
           await env.POLL_VOTES.put(kvKey, JSON.stringify(existing));
 
           const counts = {};
-          for (const v of Object.values(existing)) counts[v] = (counts[v] || 0) + 1;
+          const voters = {};
+          for (const [uid, optIdx] of Object.entries(existing)) {
+            counts[optIdx] = (counts[optIdx] || 0) + 1;
+            if (!voters[optIdx]) voters[optIdx] = [];
+            voters[optIdx].push(uid);
+          }
 
-          const blocks = buildButtonPollBlocks(pollData, counts, slug);
+          const blocks = buildButtonPollBlocks(pollData, counts, slug, voters);
           await fetch('https://slack.com/api/chat.update', {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${env.SLACK_BOT_TOKEN}`, 'Content-Type': 'application/json' },
@@ -1133,7 +1181,8 @@ async function handleInteraction(request, env) {
   const preambleRaw = values.poll_preamble?.value?.value?.trim() || '';
   const optionsRaw = values.poll_options?.value?.value?.trim() || '';
   const descriptionRaw = values.poll_description?.value?.value?.trim() || '';
-  const votingModeRaw = values.voting_mode?.value?.selected_option?.value || 'reaction';
+  const votingModeRaw = values.voting_mode?.voting_mode_select?.selected_option?.value || 'reaction';
+  const showVoters = votingModeRaw === 'button' && (values.show_voters?.value?.selected_options || []).some(o => o.value === 'show');
   const scheduleFreq = values.schedule_frequency?.schedule_frequency_select?.selected_option?.value || '';
   const scheduleDaysOfWeek = (values.schedule_days_of_week?.value?.selected_options || []).map(o => o.value);
   const scheduleDaysOfMonth = (values.schedule_day_of_month?.value?.selected_options || []).map(o => o.value);
@@ -1221,7 +1270,7 @@ async function handleInteraction(request, env) {
     return modalError('poll_name', `A poll named "${nameRaw}" already exists. Choose a different name.`);
   }
 
-  const commitPromise = commitPollFile(slug, nameRaw, options, emojis, preambleRaw, descriptionRaw, payload.user?.id, votingModeRaw, scheduleRaw, resultsScheduleRaw, meta.channel_id || '', env)
+  const commitPromise = commitPollFile(slug, nameRaw, options, emojis, preambleRaw, descriptionRaw, payload.user?.id, votingModeRaw, scheduleRaw, resultsScheduleRaw, meta.channel_id || '', showVoters ? false : true, env)
     .then(() => {
       if (meta.channel_id && meta.user_id) {
         return postEphemeral(
