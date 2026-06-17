@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/slack-go/slack"
 )
@@ -14,6 +15,45 @@ import (
 var pollsDir = "polls"
 
 var numberEmojis = []string{"one", "two", "three", "four", "five", "six", "seven", "eight", "nine"}
+
+// optionLine formats one poll option for Slack mrkdwn.
+// Non-breaking spaces (U+00A0) are used for the leading indent so Slack doesn't strip them.
+// Long text is pre-wrapped at ~60 chars with a continuation indent so wrapped lines
+// don't fall back to the left margin.
+func optionLine(emojiName, text string) string {
+	const (
+		nbsp    = " "
+		wrapAt  = 60
+		contLen = 7 // 4 leading NBSP + ~2 emoji visual width + 1 space
+	)
+	leading := strings.Repeat(nbsp, 4)
+	cont := strings.Repeat(nbsp, contLen)
+	prefix := leading + ":" + emojiName + ": "
+	if len([]rune(text)) <= wrapAt {
+		return prefix + text
+	}
+	words := strings.Fields(text)
+	var sb strings.Builder
+	sb.WriteString(prefix)
+	col := 0
+	for i, w := range words {
+		wlen := len([]rune(w))
+		if i == 0 {
+			sb.WriteString(w)
+			col = wlen
+		} else if col+1+wlen > wrapAt {
+			sb.WriteString("\n")
+			sb.WriteString(cont)
+			sb.WriteString(w)
+			col = wlen
+		} else {
+			sb.WriteString(" ")
+			sb.WriteString(w)
+			col += 1 + wlen
+		}
+	}
+	return sb.String()
+}
 
 // CustomPoll represents a user-created poll loaded from polls/<name>.json.
 type CustomPoll struct {
@@ -54,7 +94,7 @@ func (p *CustomPoll) ToPollInstance() PollInstance {
 	emojis := make([]string, 0, len(p.Options))
 	for i, opt := range p.Options {
 		emoji := p.emojiAt(i)
-		text += fmt.Sprintf("\n    :%s: %s", emoji, opt)
+		text += "\n" + optionLine(emoji, opt)
 		emojis = append(emojis, emoji)
 	}
 	return PollInstance{Text: text, Emojis: emojis}
@@ -82,7 +122,7 @@ func (p *CustomPoll) ToBlocks() []slack.Block {
 	blocks := []slack.Block{header, prompt}
 	for i, opt := range p.Options {
 		blocks = append(blocks, slack.NewSectionBlock(
-			slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("    :%s: %s", p.emojiAt(i), opt), false, false),
+			slack.NewTextBlockObject("mrkdwn", optionLine(p.emojiAt(i), opt), false, false),
 			nil, nil,
 		))
 	}
@@ -131,7 +171,7 @@ func (p *CustomPoll) toButtonBlocks() []slack.Block {
 		)
 		btn.Style = "primary"
 		blocks = append(blocks, slack.NewSectionBlock(
-			slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("    :%s: %s", p.emojiAt(i), opt), false, false),
+			slack.NewTextBlockObject("mrkdwn", optionLine(p.emojiAt(i), opt), false, false),
 			nil,
 			slack.NewAccessory(btn),
 		))

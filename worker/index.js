@@ -227,6 +227,28 @@ function unicodeToSlack(char) {
   return SLACK_OVERRIDES[char] ?? SLACK_OVERRIDES[base] ?? emojiWhich(char) ?? emojiWhich(base) ?? null;
 }
 
+// Formats one poll option for Slack mrkdwn with NBSP leading indent and hanging-indent
+// pre-wrap for long text so continuation lines don't fall back to the left margin.
+function optionLine(emoji, text) {
+  const nbsp = ' ';
+  const leading = nbsp.repeat(4);
+  const cont = nbsp.repeat(7); // 4 leading + ~2 emoji visual width + 1 space
+  const prefix = `${leading}:${emoji}: `;
+  const wrapAt = 60;
+  if ([...text].length <= wrapAt) return prefix + text;
+  const words = text.split(/\s+/).filter(Boolean);
+  let result = prefix;
+  let col = 0;
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    const wlen = [...w].length;
+    if (i === 0) { result += w; col = wlen; }
+    else if (col + 1 + wlen > wrapAt) { result += '\n' + cont + w; col = wlen; }
+    else { result += ' ' + w; col += 1 + wlen; }
+  }
+  return result;
+}
+
 // Normalises a poll display name to a filename-safe slug, e.g. "Summer Sports" → "summer-sports".
 function slugify(name) {
   return name.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
@@ -245,7 +267,7 @@ function buildButtonPollBlocks(pollData, counts, slug) {
     const voteText = count === 1 ? '1 vote' : `${count} votes`;
     blocks.push({
       type: 'section',
-      text: { type: 'mrkdwn', text: `    :${emoji}: ${pollData.options[i]}` },
+      text: { type: 'mrkdwn', text: optionLine(emoji, pollData.options[i]) },
       accessory: {
         type: 'button',
         text: { type: 'plain_text', text: voteText },
