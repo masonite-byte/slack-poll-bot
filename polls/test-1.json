@@ -1,0 +1,16 @@
+{
+  "name": "Test #1",
+  "options": [
+    "Soccer",
+    "Basketball",
+    "Emoji = 1?"
+  ],
+  "emojis": [
+    "soccer",
+    "basketball",
+    "three"
+  ],
+  "author_id": "U08V6CJ885P",
+  "voting_mode": "button",
+  "channel_id": "C0BAL95D0U9"
+}
