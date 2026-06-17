@@ -45,7 +45,7 @@ func (p *CustomPoll) ToPollInstance() PollInstance {
 	emojis := make([]string, 0, len(p.Options))
 	for i, opt := range p.Options {
 		emoji := p.emojiAt(i)
-		text += fmt.Sprintf("\n    :%s: %s", emoji, opt)
+		text += fmt.Sprintf("\n    :%s: %s", emoji, opt)
 		emojis = append(emojis, emoji)
 	}
 	return PollInstance{Text: text, Emojis: emojis}
