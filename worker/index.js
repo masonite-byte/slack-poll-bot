@@ -2194,7 +2194,7 @@ async function openModal(triggerId, channelId, userId, env) {
         element: {
           type: 'radio_buttons',
           action_id: 'value',
-          initial_option: { text: { type: 'plain_text', text: 'Reaction-based' }, value: 'reaction' },
+          initial_option: { text: { type: 'plain_text', text: 'Reaction-based — voters react with emojis' }, value: 'reaction' },
           options: [
             {
               text: { type: 'plain_text', text: 'Reaction-based — voters react with emojis' },
