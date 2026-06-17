@@ -171,9 +171,10 @@ async function pollFileExists(slug, env) {
   return resp.ok;
 }
 
-async function commitPollFile(slug, name, options, emojis, description, env) {
+async function commitPollFile(slug, name, options, emojis, preamble, description, env) {
   const url = `https://api.github.com/repos/${env.GITHUB_REPO}/contents/polls/${slug}.json`;
   const pollData = { name, options, emojis };
+  if (preamble) pollData.preamble = preamble;
   if (description) pollData.description = description;
   const content = JSON.stringify(pollData, null, 2);
   const put = await fetch(url, {
@@ -221,6 +222,18 @@ async function openModal(triggerId, channelId, userId, env) {
           type: 'plain_text_input',
           action_id: 'value',
           placeholder: { type: 'plain_text', text: 'e.g. Summer Sports' },
+        },
+      },
+      {
+        type: 'input',
+        block_id: 'poll_preamble',
+        label: { type: 'plain_text', text: 'Intro (optional)' },
+        optional: true,
+        element: {
+          type: 'plain_text_input',
+          action_id: 'value',
+          multiline: true,
+          placeholder: { type: 'plain_text', text: 'What question are you asking? Shown above the options.\ne.g. "What should we do for the company outing?"' },
         },
       },
       {
@@ -441,6 +454,7 @@ async function handleInteraction(request, env) {
 
   const values = payload.view.state.values;
   const nameRaw = values.poll_name?.value?.value?.trim() || '';
+  const preambleRaw = values.poll_preamble?.value?.value?.trim() || '';
   const optionsRaw = values.poll_options?.value?.value?.trim() || '';
   const descriptionRaw = values.poll_description?.value?.value?.trim() || '';
 
@@ -479,7 +493,7 @@ async function handleInteraction(request, env) {
     return modalError('poll_name', `A poll named "${nameRaw}" already exists. Choose a different name.`);
   }
 
-  const commitPromise = commitPollFile(slug, nameRaw, options, emojis, descriptionRaw, env)
+  const commitPromise = commitPollFile(slug, nameRaw, options, emojis, preambleRaw, descriptionRaw, env)
     .then(() => {
       if (meta.channel_id && meta.user_id) {
         return postEphemeral(
