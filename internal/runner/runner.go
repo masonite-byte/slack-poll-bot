@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"math/rand"
@@ -11,6 +12,9 @@ import (
 	"github.com/masonite-byte/slack-poll-bot/internal/slackclient"
 	"github.com/slack-go/slack"
 )
+
+// ErrNoPollFound is returned when no active poll exists in the channel.
+var ErrNoPollFound = errors.New("no active poll found")
 
 var winnerMessages = []string{
 	"Congratulations... your sheep mentality paid off. *%s* won! 🐑",
@@ -98,8 +102,12 @@ func RunPostPoll(api slackclient.API) error {
 // RunResults finds the latest poll, computes vote counts (excluding bot), posts the summary,
 // and returns the message and whether the top options are tied.
 func RunResults(api slackclient.API) (string, bool, error) {
-	timestamp, err := api.FindLatestPoll()
+	timestamp, slug, err := api.FindLatestPoll()
 	if err != nil {
+		if strings.Contains(err.Error(), "no recent poll found") {
+			api.PostBlocks("⚠️ No active poll found in this channel. Use `/newpoll` to post one first.")
+			return "", false, ErrNoPollFound
+		}
 		return "", false, err
 	}
 
@@ -113,7 +121,8 @@ func RunResults(api slackclient.API) (string, bool, error) {
 		return "", false, err
 	}
 
-	results := tallyResults(reactions, botID)
+	labels := buildLabelMap(slug)
+	results := tallyResults(reactions, botID, labels)
 	message := BuildResults(results)
 	blocks := BuildResultsBlocks(results)
 	if _, _, err := api.PostBlocks(message, blocks...); err != nil {
@@ -127,7 +136,7 @@ func RunResults(api slackclient.API) (string, bool, error) {
 
 // BuildResultsMessage computes the results summary from Slack and returns the final text.
 func BuildResultsMessage(api slackclient.API) (string, error) {
-	timestamp, err := api.FindLatestPoll()
+	timestamp, slug, err := api.FindLatestPoll()
 	if err != nil {
 		slog.Error("BuildResultsMessage: FindLatestPoll failed", "error", err)
 		return "", err
@@ -145,7 +154,7 @@ func BuildResultsMessage(api slackclient.API) (string, error) {
 		return "", err
 	}
 
-	return BuildResults(tallyResults(reactions, botID)), nil
+	return BuildResults(tallyResults(reactions, botID, buildLabelMap(slug))), nil
 }
 
 // BuildResults generates a text report and appends the highest-voted event or tie summary.
@@ -203,7 +212,7 @@ func BuildResultsBlocks(results []pollResult) []slack.Block {
 }
 
 func BuildPollStatusMessage(api slackclient.API) (string, error) {
-	timestamp, err := api.FindLatestPoll()
+	timestamp, slug, err := api.FindLatestPoll()
 	if err != nil {
 		return "", err
 	}
@@ -218,12 +227,12 @@ func BuildPollStatusMessage(api slackclient.API) (string, error) {
 		return "", err
 	}
 
-	summary := BuildResults(tallyResults(reactions, botID))
+	summary := BuildResults(tallyResults(reactions, botID, buildLabelMap(slug)))
 	return fmt.Sprintf("Current poll status (posted at %s):\n%s", timestamp, summary), nil
 }
 
 func RunoffPoll(api slackclient.API) (string, error) {
-	timestamp, err := api.FindLatestPoll()
+	timestamp, slug, err := api.FindLatestPoll()
 	if err != nil {
 		return "", err
 	}
@@ -238,7 +247,7 @@ func RunoffPoll(api slackclient.API) (string, error) {
 		return "", err
 	}
 
-	results := tallyResults(reactions, botID)
+	results := tallyResults(reactions, botID, buildLabelMap(slug))
 	if len(results) == 0 {
 		return "No votes have been cast yet. Runoff requires at least one vote.", nil
 	}
@@ -275,7 +284,7 @@ func RunoffPoll(api slackclient.API) (string, error) {
 // NotifyVoters DMs each voter once with a randomly chosen winner or loser message.
 // If a voter backed multiple options and one of them won, they are treated as a winner.
 func NotifyVoters(api slackclient.API) error {
-	timestamp, err := api.FindLatestPoll()
+	timestamp, slug, err := api.FindLatestPoll()
 	if err != nil {
 		return err
 	}
@@ -290,7 +299,8 @@ func NotifyVoters(api slackclient.API) error {
 		return err
 	}
 
-	results := tallyResults(reactions, botID)
+	labels := buildLabelMap(slug)
+	results := tallyResults(reactions, botID, labels)
 	maxCount, winning := findWinners(results)
 	isTie := maxCount > 0 && len(winning) > 1
 	winnerLabel := strings.Join(winning, " and ")
@@ -305,10 +315,7 @@ func NotifyVoters(api slackclient.API) error {
 	seen := make(map[string]bool)
 
 	for _, reaction := range reactions {
-		label, ok := poll.ReactionLabels[reaction.Name]
-		if !ok {
-			label = reaction.Name
-		}
+		label := resolveLabel(reaction.Name, labels)
 		for _, userID := range reaction.Users {
 			if userID == botID {
 				continue
@@ -337,9 +344,25 @@ func NotifyVoters(api slackclient.API) error {
 	return nil
 }
 
+// RunPostCustomPoll posts a user-created custom poll and seeds its reactions.
+func RunPostCustomPoll(api slackclient.API, p *poll.CustomPoll) error {
+	instance := p.ToPollInstance()
+	blocks := p.ToBlocks()
+	_, timestamp, err := api.PostBlocks(instance.Text, blocks...)
+	if err != nil {
+		return err
+	}
+	for _, e := range instance.Emojis {
+		if err := api.AddReaction(e, timestamp); err != nil {
+			slog.Warn("failed to seed reaction", "emoji", e, "error", err)
+		}
+	}
+	return nil
+}
+
 // DeleteLatestPoll finds the most recent poll and deletes it.
 func DeleteLatestPoll(api slackclient.API) (string, error) {
-	timestamp, err := api.FindLatestPoll()
+	timestamp, _, err := api.FindLatestPoll()
 	if err != nil {
 		return "", err
 	}
@@ -393,7 +416,34 @@ func findWinners(results []pollResult) (int, []string) {
 	return maxCount, winning
 }
 
-func tallyResults(reactions []slackclient.Reaction, botID string) []pollResult {
+// buildLabelMap returns the emoji→label map for a poll slug.
+// Returns nil for the weekly and runoff polls, which use poll.ReactionLabels directly.
+func buildLabelMap(slug string) map[string]string {
+	if slug == "" || slug == "weekly" || slug == "runoff" {
+		return nil
+	}
+	cp, err := poll.LoadCustomPoll(slug)
+	if err != nil {
+		slog.Warn("could not load custom poll labels", "slug", slug, "error", err)
+		return nil
+	}
+	return cp.LabelMap()
+}
+
+// resolveLabel looks up an emoji name in the custom label map first, then falls back to poll.ReactionLabels.
+func resolveLabel(emojiName string, labels map[string]string) string {
+	if labels != nil {
+		if l, ok := labels[emojiName]; ok {
+			return l
+		}
+	}
+	if l, ok := poll.ReactionLabels[emojiName]; ok {
+		return l
+	}
+	return emojiName
+}
+
+func tallyResults(reactions []slackclient.Reaction, botID string, labels map[string]string) []pollResult {
 	results := make([]pollResult, 0, len(reactions))
 	for _, reaction := range reactions {
 		count := reaction.Count
@@ -406,11 +456,11 @@ func tallyResults(reactions []slackclient.Reaction, botID string) []pollResult {
 		if count < 0 {
 			count = 0
 		}
-		label, ok := poll.ReactionLabels[reaction.Name]
-		if !ok {
-			label = reaction.Name
-		}
-		results = append(results, pollResult{Name: reaction.Name, Label: label, Count: count})
+		results = append(results, pollResult{
+			Name:  reaction.Name,
+			Label: resolveLabel(reaction.Name, labels),
+			Count: count,
+		})
 	}
 
 	sort.Slice(results, func(i, j int) bool {

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"log/slog"
 	"os"
 
@@ -14,6 +15,10 @@ func main() {
 	client := slackclient.New()
 	_, isTie, err := runner.RunResults(client)
 	if err != nil {
+		if errors.Is(err, runner.ErrNoPollFound) {
+			slog.Warn("no active poll found, nothing to do")
+			os.Exit(0)
+		}
 		slog.Error("error computing results", "error", err)
 		os.Exit(1)
 	}
@@ -25,11 +30,16 @@ func main() {
 	}
 
 	if isTie {
+		// RunoffPoll deletes the original poll itself before posting the runoff.
 		result, err := runner.RunoffPoll(client)
 		if err != nil {
 			slog.Error("error posting runoff poll", "error", err)
 			os.Exit(1)
 		}
 		slog.Info("runoff poll posted", "result", result)
+	} else {
+		if _, err := runner.DeleteLatestPoll(client); err != nil {
+			slog.Warn("could not delete poll after results", "error", err)
+		}
 	}
 }

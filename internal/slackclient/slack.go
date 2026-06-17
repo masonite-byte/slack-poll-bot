@@ -28,7 +28,7 @@ type API interface {
 	PostBlocks(text string, blocks ...slack.Block) (string, string, error)
 	AddReaction(name, timestamp string) error
 	GetReactions(timestamp string) ([]Reaction, error)
-	FindLatestPoll() (string, error)
+	FindLatestPoll() (timestamp, slug string, err error)
 	FindPreviousWinner() (string, error)
 	BotUserID() (string, error)
 	ChannelID() string
@@ -122,8 +122,9 @@ func (c *Client) SendDM(userID, text string) error {
 	return err
 }
 
-// FindLatestPoll scans channel history using pagination until it finds the last poll message
-func (c *Client) FindLatestPoll() (string, error) {
+// FindLatestPoll scans channel history and returns the timestamp and slug of the most recent poll.
+// The slug is the part after "poll_marker:" (e.g. "weekly", "runoff", "summer-sports").
+func (c *Client) FindLatestPoll() (timestamp, slug string, err error) {
 	params := &slack.GetConversationHistoryParameters{
 		ChannelID: c.channelID,
 		Limit:     100,
@@ -133,30 +134,33 @@ func (c *Client) FindLatestPoll() (string, error) {
 	for i := 0; i < maxPages; i++ {
 		history, err := c.api.GetConversationHistory(params)
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
 
 		for _, msg := range history.Messages {
-			if containsPollMarker(msg) || containsPollHeader(msg.Text) {
-				return msg.Timestamp, nil
+			if s := pollMarkerSlug(msg); s != "" {
+				return msg.Timestamp, s, nil
+			}
+			if containsPollHeader(msg.Text) {
+				return msg.Timestamp, "weekly", nil
 			}
 		}
 
-		// no more pages
 		if history.ResponseMetaData.NextCursor == "" {
 			break
 		}
 		params.Cursor = history.ResponseMetaData.NextCursor
 	}
 
-	return "", fmt.Errorf("no recent poll found in the last %d pages", maxPages)
+	return "", "", fmt.Errorf("no recent poll found in the last %d pages", maxPages)
 }
 
-func containsPollMarker(msg slack.Message) bool {
+// pollMarkerSlug extracts the slug from a poll_marker context block (e.g. "weekly", "summer-sports").
+// Returns "" if the message has no poll marker.
+func pollMarkerSlug(msg slack.Message) string {
 	if msg.Blocks.BlockSet == nil {
-		return false
+		return ""
 	}
-
 	for _, block := range msg.Blocks.BlockSet {
 		var ctx *slack.ContextBlock
 		switch b := block.(type) {
@@ -167,13 +171,18 @@ func containsPollMarker(msg slack.Message) bool {
 		default:
 			continue
 		}
-
-		if ctx.BlockID == "poll_marker" {
-			return true
+		if ctx.BlockID != "poll_marker" || len(ctx.ContextElements.Elements) == 0 {
+			continue
+		}
+		if txt, ok := ctx.ContextElements.Elements[0].(*slack.TextBlockObject); ok {
+			return strings.TrimPrefix(txt.Text, "poll_marker:")
 		}
 	}
+	return ""
+}
 
-	return false
+func containsPollMarker(msg slack.Message) bool {
+	return pollMarkerSlug(msg) != ""
 }
 
 func containsPollHeader(text string) bool {
