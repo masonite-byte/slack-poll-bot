@@ -4,7 +4,7 @@ const HELP_TEXT = [
   '/newpoll   - pick and post a poll from a dropdown.',
   '/runoff    - start a runoff poll when tied.',
   '/notify    - DM voters with their results.',
-  '/delete    - delete the most recent poll.',
+  '/delete    - permanently delete a custom poll (authors only).',
   '/create    - create a custom poll via a form.',
   '/polls     - list all available custom polls.',
   '/schedule  - show the weekly poll schedule.',
@@ -171,9 +171,9 @@ async function pollFileExists(slug, env) {
   return resp.ok;
 }
 
-async function commitPollFile(slug, name, options, emojis, preamble, description, env) {
+async function commitPollFile(slug, name, options, emojis, preamble, description, authorId, env) {
   const url = `https://api.github.com/repos/${env.GITHUB_REPO}/contents/polls/${slug}.json`;
-  const pollData = { name, options, emojis };
+  const pollData = { name, options, emojis, author_id: authorId };
   if (preamble) pollData.preamble = preamble;
   if (description) pollData.description = description;
   const content = JSON.stringify(pollData, null, 2);
@@ -201,6 +201,30 @@ async function listPolls(env) {
   return files
     .filter(f => f.type === 'file' && f.name.endsWith('.json'))
     .map(f => f.name.replace(/\.json$/, ''));
+}
+
+async function getPollData(slug, env) {
+  const url = `https://api.github.com/repos/${env.GITHUB_REPO}/contents/polls/${slug}.json`;
+  const resp = await fetch(url, { headers: ghHeaders(env) });
+  if (!resp.ok) return null;
+  const file = await resp.json();
+  return JSON.parse(atob(file.content.replace(/\n/g, '')));
+}
+
+async function deletePollFile(slug, env) {
+  const url = `https://api.github.com/repos/${env.GITHUB_REPO}/contents/polls/${slug}.json`;
+  const getResp = await fetch(url, { headers: ghHeaders(env) });
+  if (!getResp.ok) throw new Error(`Poll not found: ${slug}`);
+  const { sha } = await getResp.json();
+  const delResp = await fetch(url, {
+    method: 'DELETE',
+    headers: { ...ghHeaders(env), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: `Delete poll: ${slug}`, sha, branch: 'main' }),
+  });
+  if (!delResp.ok) {
+    const text = await delResp.text();
+    throw new Error(`GitHub API ${delResp.status}: ${text}`);
+  }
 }
 
 // ── Slack API helpers ─────────────────────────────────────────────────────────
@@ -361,6 +385,105 @@ async function openResultsModal(triggerId, channelId, userId, polls, env) {
   if (!data.ok) throw new Error(`views.open failed: ${data.error}`);
 }
 
+async function openDeleteModal(triggerId, channelId, userId, polls, env) {
+  const options = polls.map(slug => ({
+    text: { type: 'plain_text', text: slug.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') },
+    value: slug,
+  }));
+
+  const modal = {
+    type: 'modal',
+    callback_id: 'delete_poll',
+    private_metadata: JSON.stringify({ channel_id: channelId, user_id: userId }),
+    title: { type: 'plain_text', text: 'Delete a Poll' },
+    submit: { type: 'plain_text', text: 'Continue' },
+    close: { type: 'plain_text', text: 'Cancel' },
+    blocks: [
+      {
+        type: 'section',
+        text: { type: 'mrkdwn', text: "You'll be asked to confirm before anything is deleted." },
+      },
+      {
+        type: 'input',
+        block_id: 'poll_select',
+        label: { type: 'plain_text', text: 'Which poll would you like to delete?' },
+        element: {
+          type: 'static_select',
+          action_id: 'value',
+          placeholder: { type: 'plain_text', text: 'Select a poll…' },
+          options,
+        },
+      },
+    ],
+  };
+
+  const resp = await fetch('https://slack.com/api/views.open', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${env.SLACK_BOT_TOKEN}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ trigger_id: triggerId, view: modal }),
+  });
+  const data = await resp.json();
+  if (!data.ok) throw new Error(`views.open failed: ${data.error}`);
+}
+
+async function sendDeleteConfirmationDM(userId, slug, pollName, env) {
+  const resp = await fetch('https://slack.com/api/chat.postMessage', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${env.SLACK_BOT_TOKEN}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      channel: userId,
+      text: `Delete the "${pollName}" poll?`,
+      blocks: [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `🗑️ Are you sure you want to permanently delete the *${pollName}* poll? This cannot be undone.`,
+          },
+        },
+        {
+          type: 'actions',
+          block_id: 'delete_confirm_actions',
+          elements: [
+            {
+              type: 'button',
+              text: { type: 'plain_text', text: 'Yes, Delete' },
+              style: 'danger',
+              action_id: 'delete_poll_confirm',
+              value: slug,
+            },
+            {
+              type: 'button',
+              text: { type: 'plain_text', text: 'Cancel' },
+              action_id: 'delete_poll_cancel',
+              value: slug,
+            },
+          ],
+        },
+      ],
+    }),
+  });
+  const data = await resp.json();
+  if (!data.ok) throw new Error(`chat.postMessage failed: ${data.error}`);
+}
+
+async function updateMessage(channelId, ts, text, env) {
+  await fetch('https://slack.com/api/chat.update', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${env.SLACK_BOT_TOKEN}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ channel: channelId, ts, text, blocks: [] }),
+  });
+}
+
 async function postEphemeral(channelId, userId, text, env) {
   await fetch('https://slack.com/api/chat.postEphemeral', {
     method: 'POST',
@@ -399,6 +522,35 @@ async function handleInteraction(request, env) {
 
   const params = new URLSearchParams(body);
   const payload = JSON.parse(params.get('payload') || '{}');
+
+  // ── block_actions: button clicks (e.g. delete confirmation DM) ──────────────
+  if (payload.type === 'block_actions') {
+    const action = payload.actions?.[0];
+    const channelId = payload.channel?.id;
+    const messageTs = payload.message?.ts;
+
+    if (action?.action_id === 'delete_poll_confirm') {
+      const slug = action.value;
+      const work = async () => {
+        try {
+          await deletePollFile(slug, env);
+          await updateMessage(channelId, messageTs, `✅ Poll *${slug}* has been permanently deleted.`, env);
+        } catch (e) {
+          console.error('delete_poll_confirm error:', e);
+          await updateMessage(channelId, messageTs, `❌ Failed to delete poll: ${e.message}`, env);
+        }
+      };
+      if (typeof env._ctx?.waitUntil === 'function') env._ctx.waitUntil(work());
+    } else if (action?.action_id === 'delete_poll_cancel') {
+      const slug = action.value;
+      const work = async () => {
+        await updateMessage(channelId, messageTs, `Deletion of *${slug}* cancelled.`, env);
+      };
+      if (typeof env._ctx?.waitUntil === 'function') env._ctx.waitUntil(work());
+    }
+
+    return new Response('', { status: 200 });
+  }
 
   if (payload.type !== 'view_submission') return new Response('', { status: 200 });
 
@@ -449,6 +601,32 @@ async function handleInteraction(request, env) {
     return new Response('', { status: 200 });
   }
 
+  // ── delete_poll: user selected a poll to delete ──────────────────────────
+  if (callbackId === 'delete_poll') {
+    const selected = payload.view.state.values.poll_select?.value?.selected_option?.value || '';
+    const userId = payload.user?.id;
+
+    const work = async () => {
+      try {
+        const pollData = await getPollData(selected, env);
+        if (!pollData) {
+          await postEphemeral(meta.channel_id, userId, `❌ Poll \`${selected}\` not found.`, env);
+          return;
+        }
+        if (pollData.author_id && pollData.author_id !== userId) {
+          await postEphemeral(meta.channel_id, userId, `❌ Only the poll author can delete it.`, env);
+          return;
+        }
+        await sendDeleteConfirmationDM(userId, selected, pollData.name, env);
+      } catch (e) {
+        console.error('delete_poll flow error:', e);
+        await postEphemeral(meta.channel_id, userId, '❌ Failed to process deletion. Please try again.', env);
+      }
+    };
+    if (typeof env._ctx?.waitUntil === 'function') env._ctx.waitUntil(work());
+    return new Response('', { status: 200 });
+  }
+
   // ── create_poll: user submitted a new poll form ───────────────────────────
   if (callbackId !== 'create_poll') return new Response('', { status: 200 });
 
@@ -493,7 +671,7 @@ async function handleInteraction(request, env) {
     return modalError('poll_name', `A poll named "${nameRaw}" already exists. Choose a different name.`);
   }
 
-  const commitPromise = commitPollFile(slug, nameRaw, options, emojis, preambleRaw, descriptionRaw, env)
+  const commitPromise = commitPollFile(slug, nameRaw, options, emojis, preambleRaw, descriptionRaw, payload.user?.id, env)
     .then(() => {
       if (meta.channel_id && meta.user_id) {
         return postEphemeral(
@@ -596,14 +774,24 @@ async function handleSlashCommand(request, env) {
         return ephemeral('Failed to notify voters. Please try again.');
       }
 
-    case '/delete':
-      try {
-        await triggerWorkflow('delete_poll.yml', env, { channel_id: channelId });
-        return ephemeral('Deleting the most recent poll. Check the channel shortly.');
-      } catch (e) {
-        console.error('delete workflow error:', e);
-        return ephemeral('Failed to delete poll. Please try again.');
-      }
+    case '/delete': {
+      const deleteWork = async () => {
+        try {
+          const polls = await listPolls(env) || [];
+          if (polls.length === 0) {
+            await postEphemeral(channelId, userId, 'No custom polls to delete. Use `/create` to make one.', env);
+            return;
+          }
+          await openDeleteModal(triggerId, channelId, userId, polls, env);
+        } catch (e) {
+          console.error('delete modal error:', e);
+          await postEphemeral(channelId, userId, '❌ Failed to open delete selector. Please try again.', env);
+        }
+      };
+      const dp = deleteWork();
+      if (typeof env._ctx?.waitUntil === 'function') env._ctx.waitUntil(dp);
+      return new Response('', { status: 200 });
+    }
 
     case '/create': {
       const createWork = async () => {
