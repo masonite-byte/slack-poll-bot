@@ -467,26 +467,33 @@ async function handleSlashCommand(request, env) {
       );
 
     case '/results': {
-      try {
-        const polls = await listPolls(env) || [];
-        await openResultsModal(triggerId, channelId, userId, polls, env);
-        return new Response('', { status: 200 });
-      } catch (e) {
-        console.error('results modal error:', e);
-        return ephemeral('Failed to open results selector. Please try again.');
-      }
+      const resultsWork = async () => {
+        try {
+          const polls = await listPolls(env) || [];
+          await openResultsModal(triggerId, channelId, userId, polls, env);
+        } catch (e) {
+          console.error('results modal error:', e);
+          await postEphemeral(channelId, userId, '❌ Failed to open results selector. Please try again.', env);
+        }
+      };
+      const rp = resultsWork();
+      if (typeof env._ctx?.waitUntil === 'function') env._ctx.waitUntil(rp);
+      return new Response('', { status: 200 });
     }
 
     case '/newpoll': {
-      try {
-        const polls = await listPolls(env);
-        if (polls === null) return ephemeral('Failed to fetch polls. Please try again.');
-        await openPostPollModal(triggerId, channelId, userId, polls, env);
-        return new Response('', { status: 200 });
-      } catch (e) {
-        console.error('newpoll modal error:', e);
-        return ephemeral('Failed to open poll selector. Please try again.');
-      }
+      const newpollWork = async () => {
+        try {
+          const polls = await listPolls(env) || [];
+          await openPostPollModal(triggerId, channelId, userId, polls, env);
+        } catch (e) {
+          console.error('newpoll modal error:', e);
+          await postEphemeral(channelId, userId, '❌ Failed to open poll selector. Please try again.', env);
+        }
+      };
+      const np = newpollWork();
+      if (typeof env._ctx?.waitUntil === 'function') env._ctx.waitUntil(np);
+      return new Response('', { status: 200 });
     }
 
     case '/runoff':
@@ -516,14 +523,19 @@ async function handleSlashCommand(request, env) {
         return ephemeral('Failed to delete poll. Please try again.');
       }
 
-    case '/create':
-      try {
-        await openModal(triggerId, channelId, userId, env);
-        return new Response('', { status: 200 });
-      } catch (e) {
-        console.error('modal open error:', e);
-        return ephemeral('Failed to open poll creation form. Please try again.');
-      }
+    case '/create': {
+      const createWork = async () => {
+        try {
+          await openModal(triggerId, channelId, userId, env);
+        } catch (e) {
+          console.error('modal open error:', e);
+          await postEphemeral(channelId, userId, '❌ Failed to open poll creation form. Please try again.', env);
+        }
+      };
+      const cp = createWork();
+      if (typeof env._ctx?.waitUntil === 'function') env._ctx.waitUntil(cp);
+      return new Response('', { status: 200 });
+    }
 
     case '/polls': {
       try {
