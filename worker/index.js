@@ -234,7 +234,7 @@ function unicodeToSlack(char) {
 function optionLine(emoji, text) {
   const nbsp = ' ';
   const leading = nbsp.repeat(4);
-  const cont = nbsp.repeat(7); // 4 leading + ~2 emoji visual width + 1 space
+  const cont = nbsp.repeat(9); // 4 leading + ~4 emoji visual width + 1 space
   const prefix = `${leading}:${emoji}: `;
   const wrapAt = 60;
   if ([...text].length <= wrapAt) return prefix + text;

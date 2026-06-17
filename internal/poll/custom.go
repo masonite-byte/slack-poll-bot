@@ -24,7 +24,7 @@ func optionLine(emojiName, text string) string {
 	const (
 		nbsp    = " "
 		wrapAt  = 60
-		contLen = 7 // 4 leading NBSP + ~2 emoji visual width + 1 space
+		contLen = 9 // 4 leading NBSP + ~4 emoji visual width + 1 space
 	)
 	leading := strings.Repeat(nbsp, 4)
 	cont := strings.Repeat(nbsp, contLen)
