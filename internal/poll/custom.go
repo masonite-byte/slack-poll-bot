@@ -17,10 +17,11 @@ var numberEmojis = []string{"one", "two", "three", "four", "five", "six", "seven
 
 // CustomPoll represents a user-created poll loaded from polls/<name>.json.
 type CustomPoll struct {
-	Name    string   `json:"name"`
-	Options []string `json:"options"`
-	Emojis  []string `json:"emojis,omitempty"` // parallel to Options; falls back to number emojis if absent
-	Slug    string   `json:"-"`                 // derived from filename, not stored in JSON
+	Name        string   `json:"name"`
+	Options     []string `json:"options"`
+	Emojis      []string `json:"emojis,omitempty"`      // parallel to Options; falls back to number emojis if absent
+	Description string   `json:"description,omitempty"` // optional context shown below options in the poll
+	Slug        string   `json:"-"`                     // derived from filename, not stored in JSON
 }
 
 // LoadCustomPoll reads polls/<name>.json from disk.
@@ -63,6 +64,12 @@ func (p *CustomPoll) ToBlocks() []slack.Block {
 	for i, opt := range p.Options {
 		blocks = append(blocks, slack.NewSectionBlock(
 			slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("    :%s: %s", p.emojiAt(i), opt), false, false),
+			nil, nil,
+		))
+	}
+	if p.Description != "" {
+		blocks = append(blocks, slack.NewSectionBlock(
+			slack.NewTextBlockObject("mrkdwn", p.Description, false, false),
 			nil, nil,
 		))
 	}
