@@ -23,7 +23,7 @@ var numberEmojis = []string{"one", "two", "three", "four", "five", "six", "seven
 func optionLine(emojiName, text string) string {
 	const (
 		nbsp    = " "
-		wrapAt  = 60
+		wrapAt  = 40
 		contLen = 11 // 4 leading NBSP + ~6 emoji visual width + 1 space
 	)
 	leading := strings.Repeat(nbsp, 4)

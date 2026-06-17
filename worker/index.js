@@ -236,7 +236,7 @@ function optionLine(emoji, text) {
   const leading = nbsp.repeat(4);
   const cont = nbsp.repeat(11); // 4 leading + ~6 emoji visual width + 1 space
   const prefix = `${leading}:${emoji}: `;
-  const wrapAt = 60;
+  const wrapAt = 40;
   if ([...text].length <= wrapAt) return prefix + text;
   const words = text.split(/\s+/).filter(Boolean);
   let result = prefix;
