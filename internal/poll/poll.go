@@ -77,7 +77,7 @@ func GetWeeklyPollExcluding(excluded string) PollInstance {
 	text := fmt.Sprintf("@channel: 📊 *Weekly Poll*\n\nWhat sporting event should we do this week???")
 	for _, opt := range options {
 		if emoji, ok := OptionReactions[opt]; ok {
-			text += fmt.Sprintf("\n    :%s: %s", emoji, opt)
+			text += fmt.Sprintf("\n    :%s: %s", emoji, opt)
 		}
 	}
 	emojis := make([]string, 0, len(options))
