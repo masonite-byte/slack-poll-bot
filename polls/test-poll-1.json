@@ -1,0 +1,16 @@
+{
+  "name": "Test Poll 1",
+  "options": [
+    "Thumbs up emoji?",
+    "Sad emoji???",
+    "test (should be 1)"
+  ],
+  "emojis": [
+    "+1",
+    "pensive",
+    "three"
+  ],
+  "author_id": "U08V6CJ885P",
+  "preamble": "This is a test poll to test out the new create poll feature to the Poll-inator app",
+  "description": "This is the footer of the post :)"
+}
