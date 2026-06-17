@@ -122,6 +122,11 @@ func (c *Client) SendDM(userID, text string) error {
 	return err
 }
 
+// pollHistoryMaxPages is the maximum number of 100-message pages scanned when
+// searching for a poll. 5 pages = up to 500 recent messages, which is enough
+// for any active channel while avoiding runaway API usage on quiet ones.
+const pollHistoryMaxPages = 5
+
 // FindLatestPoll scans channel history and returns the timestamp and slug of the most recent poll.
 // The slug is the part after "poll_marker:" (e.g. "weekly", "runoff", "summer-sports").
 func (c *Client) FindLatestPoll() (timestamp, slug string, err error) {
@@ -130,7 +135,7 @@ func (c *Client) FindLatestPoll() (timestamp, slug string, err error) {
 		Limit:     100,
 	}
 
-	maxPages := 5
+	maxPages := pollHistoryMaxPages
 	for i := 0; i < maxPages; i++ {
 		history, err := c.api.GetConversationHistory(params)
 		if err != nil {
@@ -152,7 +157,7 @@ func (c *Client) FindLatestPoll() (timestamp, slug string, err error) {
 		params.Cursor = history.ResponseMetaData.NextCursor
 	}
 
-	return "", "", fmt.Errorf("no recent poll found in the last %d pages", maxPages)
+	return "", "", fmt.Errorf("no recent poll found in the last %d pages", pollHistoryMaxPages)
 }
 
 // pollMarkerSlug extracts the slug from a poll_marker context block (e.g. "weekly", "summer-sports").
@@ -196,7 +201,7 @@ func (c *Client) FindPreviousWinner() (string, error) {
 		Limit:     200,
 	}
 
-	maxPages := 5
+	maxPages := pollHistoryMaxPages
 	for i := 0; i < maxPages; i++ {
 		history, err := c.api.GetConversationHistory(params)
 		if err != nil {

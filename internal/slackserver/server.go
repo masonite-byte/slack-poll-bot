@@ -103,5 +103,8 @@ func (s *Server) handleSlash(w http.ResponseWriter, r *http.Request) {
 func (s *Server) writeJSON(w http.ResponseWriter, status int, payload interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(payload)
+	if err := json.NewEncoder(w).Encode(payload); err != nil {
+		slog.Error("failed to encode JSON response", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+	}
 }

@@ -1,4 +1,4 @@
-name: Check Poll Ties
+name: Runoff Poll
 
 on:
   workflow_dispatch:
@@ -18,8 +18,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.22"
+          cache: true
 
-      - run: go run ./cmd/checkties
+      - run: go run ./cmd/runoff
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           SLACK_CHANNEL_ID: ${{ inputs.channel_id || secrets.SLACK_CHANNEL_ID }}
