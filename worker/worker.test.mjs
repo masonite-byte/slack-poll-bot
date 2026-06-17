@@ -61,15 +61,15 @@ describe('buildButtonPollBlocks', () => {
 
   test('block count: header + prompt + options + marker (no description)', () => {
     const blocks = buildButtonPollBlocks(poll, {}, 'summer-sports');
-    // 1 header + 1 prompt + 3*(section+actions) + 1 marker = 9
-    assert.equal(blocks.length, 9);
+    // 1 header + 1 prompt + 3 sections (each with accessory) + 1 marker = 6
+    assert.equal(blocks.length, 6);
   });
 
   test('block count includes description block when present', () => {
     const withDesc = { ...poll, description: 'Vote for your favorite.' };
     const blocks = buildButtonPollBlocks(withDesc, {}, 'summer-sports');
-    // 1 header + 1 prompt + 3*(section+actions) + 1 description + 1 marker = 10
-    assert.equal(blocks.length, 10);
+    // 1 header + 1 prompt + 3 sections (each with accessory) + 1 description + 1 marker = 7
+    assert.equal(blocks.length, 7);
   });
 
   test('header block contains poll name', () => {
@@ -77,50 +77,49 @@ describe('buildButtonPollBlocks', () => {
     assert.match(blocks[0].text.text, /Summer Sports/);
   });
 
-  test('each option has a section block followed by an actions block', () => {
+  test('each option is a section block with a button accessory', () => {
     const blocks = buildButtonPollBlocks(poll, {}, 'summer-sports');
     for (let i = 0; i < poll.options.length; i++) {
-      assert.equal(blocks[2 + 2 * i].type, 'section', `option ${i} section`);
-      assert.equal(blocks[3 + 2 * i].type, 'actions', `option ${i} actions`);
+      assert.equal(blocks[2 + i].type, 'section', `option ${i} section`);
+      assert.ok(blocks[2 + i].accessory, `option ${i} missing accessory`);
+      assert.equal(blocks[2 + i].accessory.type, 'button', `option ${i} accessory type`);
     }
   });
 
   test('each option button has action_id poll_vote', () => {
     const blocks = buildButtonPollBlocks(poll, {}, 'summer-sports');
     for (let i = 0; i < poll.options.length; i++) {
-      const btn = blocks[3 + 2 * i].elements[0];
-      assert.ok(btn, `option ${i} missing button`);
-      assert.equal(btn.action_id, 'poll_vote');
+      assert.equal(blocks[2 + i].accessory.action_id, 'poll_vote');
     }
   });
 
   test('button values encode slug and option index', () => {
     const blocks = buildButtonPollBlocks(poll, {}, 'summer-sports');
     for (let i = 0; i < poll.options.length; i++) {
-      assert.equal(blocks[3 + 2 * i].elements[0].value, `summer-sports:${i}`);
+      assert.equal(blocks[2 + i].accessory.value, `summer-sports:${i}`);
     }
   });
 
   test('shows "0 votes" when count is zero', () => {
     const blocks = buildButtonPollBlocks(poll, {}, 'summer-sports');
-    assert.equal(blocks[3].elements[0].text.text, '0 votes');
+    assert.equal(blocks[2].accessory.text.text, '0 votes');
   });
 
   test('shows "1 vote" (singular) when count is 1', () => {
     const blocks = buildButtonPollBlocks(poll, { 0: 1 }, 'summer-sports');
-    assert.equal(blocks[3].elements[0].text.text, '1 vote');
+    assert.equal(blocks[2].accessory.text.text, '1 vote');
   });
 
   test('shows "N votes" (plural) for counts > 1', () => {
     const blocks = buildButtonPollBlocks(poll, { 1: 3 }, 'summer-sports');
-    assert.equal(blocks[5].elements[0].text.text, '3 votes');
+    assert.equal(blocks[3].accessory.text.text, '3 votes');
   });
 
   test('accumulates independent vote counts per option', () => {
     const blocks = buildButtonPollBlocks(poll, { 0: 2, 1: 5, 2: 1 }, 'summer-sports');
-    assert.equal(blocks[3].elements[0].text.text, '2 votes');
-    assert.equal(blocks[5].elements[0].text.text, '5 votes');
-    assert.equal(blocks[7].elements[0].text.text, '1 vote');
+    assert.equal(blocks[2].accessory.text.text, '2 votes');
+    assert.equal(blocks[3].accessory.text.text, '5 votes');
+    assert.equal(blocks[4].accessory.text.text, '1 vote');
   });
 
   test('marker block is last with correct poll_marker text', () => {
@@ -133,9 +132,9 @@ describe('buildButtonPollBlocks', () => {
   test('falls back to NUMBER_EMOJIS when poll has no emojis array', () => {
     const noEmojis = { name: 'Test', options: ['Alpha', 'Beta'] };
     const blocks = buildButtonPollBlocks(noEmojis, {}, 'test');
-    // section blocks for options are at indices 2 and 4
+    // section blocks for options are at indices 2 and 3
     assert.match(blocks[2].text.text, /:one:/);
-    assert.match(blocks[4].text.text, /:two:/);
+    assert.match(blocks[3].text.text, /:two:/);
   });
 
   test('uses preamble from poll data when set', () => {

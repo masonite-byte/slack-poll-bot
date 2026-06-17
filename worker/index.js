@@ -2030,16 +2030,13 @@ function buildButtonPollBlocks(pollData, counts, slug) {
     blocks.push({
       type: 'section',
       text: { type: 'mrkdwn', text: `    :${emoji}: ${pollData.options[i]}` },
-    });
-    blocks.push({
-      type: 'actions',
-      elements: [{
+      accessory: {
         type: 'button',
         text: { type: 'plain_text', text: voteText },
         style: 'primary',
         action_id: 'poll_vote',
         value: `${slug}:${i}`,
-      }],
+      },
     });
   }
   if (pollData.description) {
