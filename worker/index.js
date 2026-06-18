@@ -1576,7 +1576,7 @@ async function handleInteraction(request, env) {
     const scheduleFreq = values.edit_schedule_frequency?.edit_schedule_frequency_select?.selected_option?.value || '';
     const scheduleDaysOfWeek = (values.edit_schedule_days_of_week?.value?.selected_options || []).map(o => o.value);
     const scheduleDaysOfMonth = (values.edit_schedule_day_of_month?.value?.selected_options || []).map(o => o.value);
-    const scheduleTime = values.edit_schedule_time?.value?.value || '';
+    const scheduleTime = values.edit_schedule_time?.value?.selected_time || '';
 
     let scheduleRaw = '';
     if (scheduleFreq) {
@@ -1592,7 +1592,7 @@ async function handleInteraction(request, env) {
     const resultsFreq = values.edit_results_frequency?.edit_results_frequency_select?.selected_option?.value || '';
     const resultsDaysOfWeek = (values.edit_results_days_of_week?.value?.selected_options || []).map(o => o.value);
     const resultsDaysOfMonth = (values.edit_results_day_of_month?.value?.selected_options || []).map(o => o.value);
-    const resultsTime = values.edit_results_time?.value?.value || '';
+    const resultsTime = values.edit_results_time?.value?.selected_time || '';
 
     let resultsScheduleRaw = '';
     if (resultsFreq) {
@@ -1680,7 +1680,7 @@ async function handleInteraction(request, env) {
   const scheduleFreq = values.schedule_frequency?.schedule_frequency_select?.selected_option?.value || '';
   const scheduleDaysOfWeek = (values.schedule_days_of_week?.value?.selected_options || []).map(o => o.value);
   const scheduleDaysOfMonth = (values.schedule_day_of_month?.value?.selected_options || []).map(o => o.value);
-  const scheduleTime = values.schedule_time?.value?.value || '';
+  const scheduleTime = values.schedule_time?.value?.selected_time || '';
 
   if (!nameRaw) return modalError('poll_name', 'Poll name is required.');
 
@@ -1705,7 +1705,7 @@ async function handleInteraction(request, env) {
   const resultsFreq = values.results_frequency?.results_frequency_select?.selected_option?.value || '';
   const resultsDaysOfWeek = (values.results_days_of_week?.value?.selected_options || []).map(o => o.value);
   const resultsDaysOfMonth = (values.results_day_of_month?.value?.selected_options || []).map(o => o.value);
-  const resultsTime = values.results_time?.value?.value || '';
+  const resultsTime = values.results_time?.value?.selected_time || '';
 
   let resultsScheduleRaw = '';
   if (resultsFreq) {
