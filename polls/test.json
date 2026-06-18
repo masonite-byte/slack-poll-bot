@@ -1,0 +1,16 @@
+{
+  "name": "Test",
+  "options": [
+    "☔️rain",
+    "☀️sunshine"
+  ],
+  "emojis": [
+    "one",
+    "two"
+  ],
+  "author_id": "U08K4TDV06A",
+  "preamble": "Which do you prefer?",
+  "voting_mode": "button",
+  "anonymous": false,
+  "channel_id": "C0BAL95D0U9"
+}
