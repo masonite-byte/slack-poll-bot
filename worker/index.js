@@ -709,11 +709,12 @@ function parseSchedule(str) {
 // modal dispatch actions don't conflict with the create modal handlers.
 function buildEditScheduleFieldBlocks(prefix, labelText, freq, initialTime = '', initialDays = []) {
   const freqOptions = [
+    { text: { type: 'plain_text', text: 'No recurring schedule' }, value: 'none' },
     { text: { type: 'plain_text', text: 'Daily' }, value: 'daily' },
     { text: { type: 'plain_text', text: 'Weekly' }, value: 'weekly' },
     { text: { type: 'plain_text', text: 'Monthly' }, value: 'monthly' },
   ];
-  const initialFreqOption = freqOptions.find(o => o.value === freq);
+  const initialFreqOption = freqOptions.find(o => o.value === (freq || 'none'));
   const blocks = [{
     type: 'input',
     block_id: `edit_${prefix}_frequency`,
