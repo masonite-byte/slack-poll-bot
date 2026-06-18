@@ -60,6 +60,9 @@ async function buildScheduleText(env) {
       if (!data?.schedule) continue;
       const label = data.name || slug;
       customLines.push(`• *${label}* — ${formatSchedule(data.schedule)}`);
+      if (data.results_schedule) {
+        customLines.push(`  ↳ Results: ${formatSchedule(data.results_schedule)}`);
+      }
     }
   } catch (e) {
     console.error('buildScheduleText: failed to fetch polls', e);
