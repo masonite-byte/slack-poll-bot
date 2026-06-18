@@ -472,7 +472,9 @@ async function getPollData(slug, env) {
   const resp = await fetch(url, { headers: ghHeaders(env) });
   if (!resp.ok) return null;
   const file = await resp.json();
-  return JSON.parse(atob(file.content.replace(/\n/g, '')));
+  const binary = atob(file.content.replace(/\n/g, ''));
+  const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
+  return JSON.parse(new TextDecoder().decode(bytes));
 }
 
 async function deletePollFile(slug, env) {
