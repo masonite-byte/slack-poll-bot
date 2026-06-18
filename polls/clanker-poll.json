@@ -11,7 +11,6 @@
   "author_id": "U08V6CJ885P",
   "preamble": "What do you think of clankers???",
   "description": "(This is a custom poll designed with Poll-inator to test configurability)",
-  "voting_mode": "button",
-  "anonymous": true,
+  "voting_mode": "reaction",
   "channel_id": "C0BAL95D0U9"
 }
