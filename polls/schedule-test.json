@@ -1,0 +1,17 @@
+{
+  "name": "Schedule test",
+  "options": [
+    "Schedule",
+    "Test"
+  ],
+  "emojis": [
+    "calendar",
+    "chart_with_upwards_trend"
+  ],
+  "author_id": "U08V6CJ885P",
+  "preamble": "This is a test of the schedule configurability",
+  "voting_mode": "button",
+  "schedule": "daily 10:00",
+  "results_schedule": "daily 10:00",
+  "channel_id": "C0BAL95D0U9"
+}
