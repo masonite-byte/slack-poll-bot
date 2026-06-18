@@ -466,7 +466,7 @@ async function listPolls(env) {
   if (!resp.ok) return null; // error
   const files = await resp.json();
   return files
-    .filter(f => f.type === 'file' && f.name.endsWith('.json'))
+    .filter(f => f.type === 'file' && f.name.endsWith('.json') && !f.name.startsWith('_'))
     .map(f => f.name.replace(/\.json$/, ''));
 }
 
