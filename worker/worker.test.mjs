@@ -1,6 +1,8 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatSchedule, buildButtonPollBlocks, slugify } from './index.js';
+import { formatSchedule, buildButtonPollBlocks, slugify, parseSchedule, optionLine, monthDayOrdinal } from './index.js';
+
+const NBSP = ' ';
 
 // ── formatSchedule ────────────────────────────────────────────────────────────
 
@@ -13,20 +15,15 @@ describe('formatSchedule', () => {
     ['tuesday 09:30',                   'Tuesday at 9:30 AM CT'],
     ['saturday 23:00',                  'Saturday at 11:00 PM CT'],
     ['thursday 08:00',                  'Thursday at 8:00 AM CT'],
-    // trailing timezone token is stripped before parsing
     ['monday 09:00 CT',                 'Monday at 9:00 AM CT'],
     ['MONDAY 09:00',                    'Monday at 9:00 AM CT'],
-    // multi-day weekly
     ['monday wednesday friday 09:00',   'Monday, Wednesday, Friday at 9:00 AM CT'],
-    // daily
     ['daily 08:00',                     'Daily at 8:00 AM CT'],
-    // monthly — single day
     ['monthly 1 09:00',                 'Monthly on the 1st at 9:00 AM CT'],
     ['monthly 15 09:00',                'Monthly on the 15th at 9:00 AM CT'],
     ['monthly 21 18:00',                'Monthly on the 21st at 6:00 PM CT'],
     ['monthly 22 18:00',                'Monthly on the 22nd at 6:00 PM CT'],
     ['monthly 23 18:00',                'Monthly on the 23rd at 6:00 PM CT'],
-    // monthly — multiple days
     ['monthly 1 15 09:00',              'Monthly on the 1st & 15th at 9:00 AM CT'],
     ['monthly 1 15 28 09:00',           'Monthly on the 1st, 15th & 28th at 9:00 AM CT'],
     ['monthly 11 12 13 09:00',          'Monthly on the 11th, 12th & 13th at 9:00 AM CT'],
@@ -42,6 +39,77 @@ describe('formatSchedule', () => {
     assert.equal(formatSchedule('monday'), 'monday');
     assert.equal(formatSchedule(''), '');
   });
+});
+
+// ── parseSchedule ─────────────────────────────────────────────────────────────
+
+describe('parseSchedule', () => {
+  test('empty string returns empty freq', () => {
+    assert.deepEqual(parseSchedule(''), { freq: '', days: [], time: '' });
+  });
+
+  test('null/undefined returns empty', () => {
+    assert.deepEqual(parseSchedule(null), { freq: '', days: [], time: '' });
+    assert.deepEqual(parseSchedule(undefined), { freq: '', days: [], time: '' });
+  });
+
+  test('daily schedule', () => {
+    assert.deepEqual(parseSchedule('daily 09:00'), { freq: 'daily', days: [], time: '09:00' });
+  });
+
+  test('single-day weekly schedule', () => {
+    assert.deepEqual(parseSchedule('monday 09:00'), { freq: 'weekly', days: ['monday'], time: '09:00' });
+  });
+
+  test('multi-day weekly schedule', () => {
+    assert.deepEqual(parseSchedule('monday wednesday friday 09:00'), {
+      freq: 'weekly',
+      days: ['monday', 'wednesday', 'friday'],
+      time: '09:00',
+    });
+  });
+
+  test('monthly single day', () => {
+    assert.deepEqual(parseSchedule('monthly 1 09:00'), { freq: 'monthly', days: ['1'], time: '09:00' });
+  });
+
+  test('monthly multiple days', () => {
+    assert.deepEqual(parseSchedule('monthly 1 15 28 09:00'), {
+      freq: 'monthly',
+      days: ['1', '15', '28'],
+      time: '09:00',
+    });
+  });
+
+  test('parseSchedule is inverse of formatSchedule for daily', () => {
+    const parsed = parseSchedule('daily 14:00');
+    assert.equal(parsed.freq, 'daily');
+    assert.equal(parsed.time, '14:00');
+  });
+
+  test('parseSchedule is inverse of formatSchedule for weekly', () => {
+    const parsed = parseSchedule('tuesday thursday 17:30');
+    assert.equal(parsed.freq, 'weekly');
+    assert.deepEqual(parsed.days, ['tuesday', 'thursday']);
+    assert.equal(parsed.time, '17:30');
+  });
+});
+
+// ── monthDayOrdinal ───────────────────────────────────────────────────────────
+
+describe('monthDayOrdinal', () => {
+  const cases = [
+    [1, '1st'], [2, '2nd'], [3, '3rd'], [4, '4th'],
+    [11, '11th'], [12, '12th'], [13, '13th'],
+    [21, '21st'], [22, '22nd'], [23, '23rd'], [24, '24th'],
+    [28, '28th'],
+  ];
+
+  for (const [n, expected] of cases) {
+    test(`${n} → "${expected}"`, () => {
+      assert.equal(monthDayOrdinal(n), expected);
+    });
+  }
 });
 
 // ── slugify ───────────────────────────────────────────────────────────────────
@@ -62,6 +130,67 @@ describe('slugify', () => {
   test('trims leading and trailing whitespace', () => {
     assert.equal(slugify('  hello  '), 'hello');
   });
+
+  test('returns empty string for all-symbol input', () => {
+    assert.equal(slugify('!!!'), '');
+  });
+
+  test('preserves numbers', () => {
+    assert.equal(slugify('Poll 2024'), 'poll-2024');
+  });
+});
+
+// ── optionLine ────────────────────────────────────────────────────────────────
+
+describe('optionLine', () => {
+  test('short text returns prefix + text on one line', () => {
+    const result = optionLine('soccer', 'Soccer');
+    assert.ok(result.startsWith(NBSP.repeat(4) + ':soccer: '));
+    assert.ok(result.endsWith('Soccer'));
+    assert.ok(!result.includes('\n'));
+  });
+
+  test('leading indent is exactly 4 NBSP', () => {
+    const result = optionLine('one', 'A');
+    assert.ok(result.startsWith(NBSP.repeat(4)));
+    assert.ok(!result.startsWith(NBSP.repeat(5)));
+  });
+
+  test('long text wraps and continuation uses 11 NBSP', () => {
+    const longText = 'This is a very long option that definitely exceeds thirty characters';
+    const result = optionLine('one', longText);
+    assert.ok(result.includes('\n'), 'should contain a newline');
+    const lines = result.split('\n');
+    assert.ok(lines.length > 1);
+    assert.ok(lines[1].startsWith(NBSP.repeat(11)), 'continuation line should start with 11 NBSP');
+  });
+
+  test('text exactly at wrap limit does not wrap', () => {
+    const text = 'A'.repeat(30);
+    const result = optionLine('one', text);
+    assert.ok(!result.includes('\n'));
+  });
+
+  test('multi-word text over wrap limit does wrap', () => {
+    // 6 words of 6 chars each = 41 chars with spaces, well over the 30-char limit
+    const text = 'abcdef abcdef abcdef abcdef abcdef abcdef';
+    const result = optionLine('one', text);
+    assert.ok(result.includes('\n'));
+  });
+
+  test('uses the provided emoji name in shortcode format', () => {
+    const result = optionLine('robot_face', 'Hello');
+    assert.ok(result.includes(':robot_face:'));
+  });
+
+  test('wrapping preserves all words', () => {
+    const words = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight'];
+    const text = words.join(' ');
+    const result = optionLine('check', text);
+    for (const w of words) {
+      assert.ok(result.includes(w), `missing word "${w}"`);
+    }
+  });
 });
 
 // ── buildButtonPollBlocks ─────────────────────────────────────────────────────
@@ -75,14 +204,12 @@ describe('buildButtonPollBlocks', () => {
 
   test('block count: header + prompt + options + marker (no description)', () => {
     const blocks = buildButtonPollBlocks(poll, {}, 'summer-sports');
-    // 1 header + 1 prompt + 3 sections (each with accessory) + 1 marker = 6
     assert.equal(blocks.length, 6);
   });
 
   test('block count includes description block when present', () => {
     const withDesc = { ...poll, description: 'Vote for your favorite.' };
     const blocks = buildButtonPollBlocks(withDesc, {}, 'summer-sports');
-    // 1 header + 1 prompt + 3 sections (each with accessory) + 1 description + 1 marker = 7
     assert.equal(blocks.length, 7);
   });
 
@@ -146,7 +273,6 @@ describe('buildButtonPollBlocks', () => {
   test('falls back to NUMBER_EMOJIS when poll has no emojis array', () => {
     const noEmojis = { name: 'Test', options: ['Alpha', 'Beta'] };
     const blocks = buildButtonPollBlocks(noEmojis, {}, 'test');
-    // section blocks for options are at indices 2 and 3
     assert.match(blocks[2].text.text, /:one:/);
     assert.match(blocks[3].text.text, /:two:/);
   });
@@ -160,5 +286,28 @@ describe('buildButtonPollBlocks', () => {
   test('falls back to default preamble text when not set', () => {
     const blocks = buildButtonPollBlocks(poll, {}, 'summer-sports');
     assert.match(blocks[1].text.text, /Click a button/);
+  });
+
+  test('anonymous poll shows no voter context blocks', () => {
+    const anonPoll = { ...poll, anonymous: true };
+    const voters = { 0: ['U001', 'U002'] };
+    const blocks = buildButtonPollBlocks(anonPoll, { 0: 2 }, 'summer-sports', voters);
+    const contextBlocks = blocks.filter(b => b.type === 'context' && b.block_id !== 'poll_marker');
+    assert.equal(contextBlocks.length, 0);
+  });
+
+  test('non-anonymous poll shows voter context block under voted option', () => {
+    const publicPoll = { ...poll, anonymous: false };
+    const voters = { 0: ['U001', 'U002'] };
+    const blocks = buildButtonPollBlocks(publicPoll, { 0: 2 }, 'summer-sports', voters);
+    const contextBlocks = blocks.filter(b => b.type === 'context' && b.elements?.[0]?.text?.includes('U001'));
+    assert.ok(contextBlocks.length > 0, 'should have a voter context block');
+  });
+
+  test('non-anonymous poll with no voters shows no voter context blocks', () => {
+    const publicPoll = { ...poll, anonymous: false };
+    const blocks = buildButtonPollBlocks(publicPoll, {}, 'summer-sports', {});
+    const contextBlocks = blocks.filter(b => b.type === 'context' && b.block_id !== 'poll_marker');
+    assert.equal(contextBlocks.length, 0);
   });
 });

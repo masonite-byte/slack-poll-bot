@@ -1769,15 +1769,35 @@ async function handleInteraction(request, env) {
   }
 
   const commitPromise = commitPollFile(slug, nameRaw, options, emojis, preambleRaw, descriptionRaw, payload.user?.id, votingModeRaw, scheduleRaw, resultsScheduleRaw, meta.channel_id || '', showVoters ? false : true, env)
-    .then(() => {
+    .then(async () => {
+      const promises = [];
       if (meta.channel_id && meta.user_id) {
-        return postEphemeral(
+        promises.push(postEphemeral(
           meta.channel_id,
           meta.user_id,
           `✅ Poll *${nameRaw}* saved! It will appear in \`/newpoll\` next time.`,
           env,
-        );
+        ));
       }
+      if (env.ADMIN_USER_ID && payload.user?.id !== env.ADMIN_USER_ID) {
+        const modeLabel = votingModeRaw === 'button' ? 'Button' : 'Reaction';
+        const optionLines = options.map((o, i) => `:${emojis[i]}: ${o}`).join('\n');
+        const scheduleNote = scheduleRaw ? `\n📅 Post: ${formatSchedule(scheduleRaw)}` : '';
+        const resultsNote = resultsScheduleRaw ? `\n📊 Results: ${formatSchedule(resultsScheduleRaw)}` : '';
+        promises.push(fetch('https://slack.com/api/chat.postMessage', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${env.SLACK_BOT_TOKEN}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            channel: env.ADMIN_USER_ID,
+            text: `🆕 New poll created by <@${payload.user?.id}>: *${nameRaw}*`,
+            blocks: [{
+              type: 'section',
+              text: { type: 'mrkdwn', text: `🆕 *New poll created* by <@${payload.user?.id}>\n\n*${nameRaw}*\n${optionLines}\n\n🗳️ Mode: ${modeLabel}${scheduleNote}${resultsNote}` },
+            }],
+          }),
+        }));
+      }
+      await Promise.all(promises);
     })
     .catch(err => {
       console.error('commitPollFile error:', err);
@@ -1984,4 +2004,4 @@ export default {
 };
 
 // Named exports for unit testing — Cloudflare Workers ignore these; only the default export matters.
-export { formatSchedule, buildButtonPollBlocks, slugify };
+export { formatSchedule, buildButtonPollBlocks, slugify, parseSchedule, optionLine, monthDayOrdinal, verifySlackSignature, handleInteraction, handleSlashCommand };
