@@ -1,17 +1,16 @@
 {
   "name": "Clanker-Poll",
   "options": [
-    "Robots are valuable tools that help humans perform tasks more efficiently, safely, and effectively while expanding our ability to explore, create, and innovate.",
-    "DESTROY"
+    "Physically mobile robot",
+    "Ai, software, etc."
   ],
   "emojis": [
     "robot_face",
-    "boom"
+    "computer"
   ],
   "author_id": "U08V6CJ885P",
-  "preamble": "What do you think of clankers???",
-  "description": "(This is a custom poll designed with Poll-inator to test configurability)",
+  "preamble": "What is a clanker???????",
   "voting_mode": "button",
   "channel_id": "C0BAL95D0U9",
-  "anonymous": true
+  "anonymous": false
 }
