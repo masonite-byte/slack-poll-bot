@@ -7,6 +7,7 @@ const HELP_TEXT = [
   '/runoff    - start a runoff poll when tied.',
   '/delete    - permanently delete a custom poll (authors only).',
   '/create    - create a custom poll via a form.',
+  '/edit      - edit an existing custom poll (authors and admin only).',
   '/polls     - list all available custom polls.',
   '/schedule  - show the weekly poll schedule.',
   '/vote      - how to vote.',
@@ -680,6 +681,234 @@ function buildCreatePollModal(channelId, userId, postFreq, resultsFreq, votingMo
   };
 }
 
+// ── Poll editing helpers ──────────────────────────────────────────────────────
+
+// Parses a stored schedule string back into form field values.
+function parseSchedule(str) {
+  if (!str) return { freq: '', days: [], time: '' };
+  const parts = str.trim().toLowerCase().split(/\s+/);
+  if (parts[0] === 'daily') return { freq: 'daily', days: [], time: parts[1] || '' };
+  if (parts[0] === 'monthly') {
+    const timeIdx = parts.findIndex((p, i) => i > 0 && /^\d{1,2}:\d{2}$/.test(p));
+    return { freq: 'monthly', days: parts.slice(1, timeIdx < 0 ? undefined : timeIdx), time: timeIdx >= 0 ? parts[timeIdx] : '' };
+  }
+  const weekdays = new Set(['monday','tuesday','wednesday','thursday','friday','saturday','sunday']);
+  const timeIdx = parts.findIndex(p => /^\d{1,2}:\d{2}$/.test(p));
+  if (timeIdx >= 0 && weekdays.has(parts[0])) {
+    return { freq: 'weekly', days: parts.slice(0, timeIdx), time: parts[timeIdx] };
+  }
+  return { freq: '', days: [], time: '' };
+}
+
+// Like buildScheduleFieldBlocks but with a separate action_id namespace so edit
+// modal dispatch actions don't conflict with the create modal handlers.
+function buildEditScheduleFieldBlocks(prefix, labelText, freq, initialTime = '', initialDays = []) {
+  const freqOptions = [
+    { text: { type: 'plain_text', text: 'Daily' }, value: 'daily' },
+    { text: { type: 'plain_text', text: 'Weekly' }, value: 'weekly' },
+    { text: { type: 'plain_text', text: 'Monthly' }, value: 'monthly' },
+  ];
+  const initialFreqOption = freqOptions.find(o => o.value === freq);
+  const blocks = [{
+    type: 'input',
+    block_id: `edit_${prefix}_frequency`,
+    label: { type: 'plain_text', text: labelText },
+    optional: true,
+    dispatch_action: true,
+    element: {
+      type: 'static_select',
+      action_id: `edit_${prefix}_frequency_select`,
+      placeholder: { type: 'plain_text', text: 'No recurring schedule' },
+      options: freqOptions,
+      ...(initialFreqOption ? { initial_option: initialFreqOption } : {}),
+    },
+  }];
+
+  if (freq === 'weekly') {
+    const weekdayOptions = [
+      { text: { type: 'plain_text', text: 'Monday' }, value: 'monday' },
+      { text: { type: 'plain_text', text: 'Tuesday' }, value: 'tuesday' },
+      { text: { type: 'plain_text', text: 'Wednesday' }, value: 'wednesday' },
+      { text: { type: 'plain_text', text: 'Thursday' }, value: 'thursday' },
+      { text: { type: 'plain_text', text: 'Friday' }, value: 'friday' },
+      { text: { type: 'plain_text', text: 'Saturday' }, value: 'saturday' },
+      { text: { type: 'plain_text', text: 'Sunday' }, value: 'sunday' },
+    ];
+    const preSelected = initialDays.length
+      ? weekdayOptions.filter(o => initialDays.includes(o.value))
+      : [weekdayOptions[0]];
+    blocks.push({
+      type: 'input',
+      block_id: `edit_${prefix}_days_of_week`,
+      label: { type: 'plain_text', text: 'Days of Week' },
+      optional: true,
+      element: {
+        type: 'checkboxes',
+        action_id: 'value',
+        options: weekdayOptions,
+        initial_options: preSelected,
+      },
+    });
+  }
+
+  if (freq === 'monthly') {
+    const dayOptions = [];
+    for (let d = 1; d <= 28; d++) {
+      dayOptions.push({ text: { type: 'plain_text', text: monthDayOrdinal(d) }, value: String(d) });
+    }
+    const preSelected = initialDays.length
+      ? dayOptions.filter(o => initialDays.includes(o.value))
+      : [dayOptions[0]];
+    blocks.push({
+      type: 'input',
+      block_id: `edit_${prefix}_day_of_month`,
+      label: { type: 'plain_text', text: 'Days of Month' },
+      optional: true,
+      element: {
+        type: 'multi_static_select',
+        action_id: 'value',
+        placeholder: { type: 'plain_text', text: 'Select days' },
+        options: dayOptions,
+        initial_options: preSelected,
+      },
+    });
+  }
+
+  if (freq) {
+    blocks.push({
+      type: 'input',
+      block_id: `edit_${prefix}_time`,
+      label: { type: 'plain_text', text: 'Time (CT)' },
+      optional: true,
+      hint: { type: 'plain_text', text: 'Central Time. Note: there may be up to 3 hr delays depending on GitHub Actions traffic.' },
+      element: {
+        type: 'timepicker',
+        action_id: 'value',
+        placeholder: { type: 'plain_text', text: 'Select time' },
+        ...(initialTime ? { initial_time: initialTime } : { initial_time: '09:00' }),
+      },
+    });
+  }
+
+  return blocks;
+}
+
+// Builds the pre-filled edit form modal.
+// initialValues: { preamble, optionsText, description, anonymous } — omit to let Slack preserve
+// current text field state (used when rebuilding on dispatch_action).
+function buildEditPollModal(slug, initialValues, postParsed, resultsParsed, votingMode) {
+  const vm = votingMode || postParsed.freq ? votingMode : '';
+  const pollLabel = slug.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  const vmInitial = vm === 'button'
+    ? { text: { type: 'plain_text', text: 'Button-based — voters click buttons, live counts shown' }, value: 'button' }
+    : { text: { type: 'plain_text', text: 'Reaction-based — voters react with emojis' }, value: 'reaction' };
+
+  const blocks = [
+    {
+      type: 'context',
+      elements: [{ type: 'mrkdwn', text: `Editing *${pollLabel}*` }],
+    },
+    {
+      type: 'input',
+      block_id: 'poll_preamble',
+      label: { type: 'plain_text', text: 'Intro' },
+      optional: true,
+      element: {
+        type: 'plain_text_input',
+        action_id: 'value',
+        multiline: true,
+        placeholder: { type: 'plain_text', text: 'What question are you asking?' },
+        ...('preamble' in initialValues ? { initial_value: initialValues.preamble || '' } : {}),
+      },
+    },
+    {
+      type: 'input',
+      block_id: 'poll_options',
+      label: { type: 'plain_text', text: 'Options (one per line, up to 9)' },
+      hint: { type: 'plain_text', text: 'One option per line. Optionally prefix with a raw emoji or :shortcode:.' },
+      element: {
+        type: 'plain_text_input',
+        action_id: 'value',
+        multiline: true,
+        placeholder: { type: 'plain_text', text: ':soccer: Soccer\n:basketball: Basketball' },
+        ...('optionsText' in initialValues ? { initial_value: initialValues.optionsText || '' } : {}),
+      },
+    },
+    {
+      type: 'input',
+      block_id: 'poll_description',
+      label: { type: 'plain_text', text: 'Description' },
+      optional: true,
+      element: {
+        type: 'plain_text_input',
+        action_id: 'value',
+        multiline: true,
+        placeholder: { type: 'plain_text', text: 'Add context or rules — shown below the options.' },
+        ...('description' in initialValues ? { initial_value: initialValues.description || '' } : {}),
+      },
+    },
+    {
+      type: 'input',
+      block_id: 'voting_mode',
+      label: { type: 'plain_text', text: 'Voting Method' },
+      dispatch_action: true,
+      element: {
+        type: 'radio_buttons',
+        action_id: 'edit_voting_mode_select',
+        initial_option: vmInitial,
+        options: [
+          { text: { type: 'plain_text', text: 'Reaction-based — voters react with emojis' }, value: 'reaction' },
+          { text: { type: 'plain_text', text: 'Button-based — voters click buttons, live counts shown' }, value: 'button' },
+        ],
+      },
+    },
+    ...(vm === 'button' ? [{
+      type: 'input',
+      block_id: 'show_voters',
+      label: { type: 'plain_text', text: 'Voter Visibility' },
+      optional: true,
+      element: {
+        type: 'checkboxes',
+        action_id: 'value',
+        options: [{ text: { type: 'plain_text', text: 'Show who voted under each option' }, value: 'show' }],
+        ...('anonymous' in initialValues && initialValues.anonymous === false
+          ? { initial_options: [{ text: { type: 'plain_text', text: 'Show who voted under each option' }, value: 'show' }] }
+          : {}),
+      },
+    }] : []),
+    ...buildEditScheduleFieldBlocks('schedule', 'Post Schedule', postParsed.freq, postParsed.time, postParsed.days),
+    ...buildEditScheduleFieldBlocks('results', 'Results Schedule', resultsParsed.freq, resultsParsed.time, resultsParsed.days),
+  ];
+
+  return {
+    type: 'modal',
+    callback_id: 'edit_poll',
+    private_metadata: JSON.stringify({ slug }),
+    title: { type: 'plain_text', text: 'Edit Poll' },
+    submit: { type: 'plain_text', text: 'Save' },
+    close: { type: 'plain_text', text: 'Cancel' },
+    blocks,
+  };
+}
+
+// Updates an existing poll JSON file on GitHub (GET sha → PUT with sha).
+async function updatePollFile(slug, pollData, env) {
+  const url = `https://api.github.com/repos/${env.GITHUB_REPO}/contents/polls/${slug}.json`;
+  const getResp = await fetch(url, { headers: ghHeaders(env) });
+  if (!getResp.ok) throw new Error(`Poll file not found: ${slug}`);
+  const { sha } = await getResp.json();
+  const content = JSON.stringify(pollData, null, 2);
+  const putResp = await fetch(url, {
+    method: 'PUT',
+    headers: { ...ghHeaders(env), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: `Update poll: ${slug}`, content: toBase64(content), sha, branch: 'main' }),
+  });
+  if (!putResp.ok) {
+    const text = await putResp.text();
+    throw new Error(`GitHub API ${putResp.status}: ${text}`);
+  }
+}
+
 async function openModal(triggerId, channelId, userId, env) {
   const resp = await fetch('https://slack.com/api/views.open', {
     method: 'POST',
@@ -848,6 +1077,50 @@ async function openDeleteModal(triggerId, channelId, userId, polls, env) {
         type: 'input',
         block_id: 'poll_select',
         label: { type: 'plain_text', text: 'Which poll would you like to delete?' },
+        element: {
+          type: 'static_select',
+          action_id: 'value',
+          placeholder: { type: 'plain_text', text: 'Select a poll…' },
+          options,
+        },
+      },
+    ],
+  };
+
+  const resp = await fetch('https://slack.com/api/views.open', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${env.SLACK_BOT_TOKEN}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ trigger_id: triggerId, view: modal }),
+  });
+  const data = await resp.json();
+  if (!data.ok) throw new Error(`views.open failed: ${data.error}`);
+}
+
+async function openEditSelectorModal(triggerId, channelId, userId, polls, env) {
+  const options = polls.map(slug => ({
+    text: { type: 'plain_text', text: slug.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') },
+    value: slug,
+  }));
+
+  const modal = {
+    type: 'modal',
+    callback_id: 'select_poll_to_edit',
+    private_metadata: JSON.stringify({ channel_id: channelId, user_id: userId }),
+    title: { type: 'plain_text', text: 'Edit a Poll' },
+    submit: { type: 'plain_text', text: 'Continue' },
+    close: { type: 'plain_text', text: 'Cancel' },
+    blocks: [
+      {
+        type: 'section',
+        text: { type: 'mrkdwn', text: "Select a poll to edit. Only polls you created (or all polls if you're admin) can be edited." },
+      },
+      {
+        type: 'input',
+        block_id: 'poll_select',
+        label: { type: 'plain_text', text: 'Which poll would you like to edit?' },
         element: {
           type: 'static_select',
           action_id: 'value',
@@ -1042,6 +1315,67 @@ async function handleInteraction(request, env) {
         });
       };
       if (typeof env._ctx?.waitUntil === 'function') env._ctx.waitUntil(work());
+    } else if (action?.action_id === 'edit_voting_mode_select') {
+      const selectedVotingMode = action.selected_option?.value || 'reaction';
+      const viewId = payload.view?.id;
+      let viewMeta = {};
+      try { viewMeta = JSON.parse(payload.view?.private_metadata || '{}'); } catch {}
+      const v = payload.view?.state?.values || {};
+      const currentPostFreq = v.edit_schedule_frequency?.edit_schedule_frequency_select?.selected_option?.value || '';
+      const currentResultsFreq = v.edit_results_frequency?.edit_results_frequency_select?.selected_option?.value || '';
+      const postParsed = parseSchedule(currentPostFreq);
+      const resultsParsed = parseSchedule(currentResultsFreq);
+      const work = async () => {
+        await fetch('https://slack.com/api/views.update', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${env.SLACK_BOT_TOKEN}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            view_id: viewId,
+            view: buildEditPollModal(viewMeta.slug || '', {}, postParsed, resultsParsed, selectedVotingMode),
+          }),
+        });
+      };
+      if (typeof env._ctx?.waitUntil === 'function') env._ctx.waitUntil(work());
+    } else if (action?.action_id === 'edit_schedule_frequency_select') {
+      const selectedPostFreq = action.selected_option?.value || '';
+      const viewId = payload.view?.id;
+      let viewMeta = {};
+      try { viewMeta = JSON.parse(payload.view?.private_metadata || '{}'); } catch {}
+      const v = payload.view?.state?.values || {};
+      const currentResultsFreq = v.edit_results_frequency?.edit_results_frequency_select?.selected_option?.value || '';
+      const currentVotingMode = v.voting_mode?.edit_voting_mode_select?.selected_option?.value || 'reaction';
+      const resultsParsed = parseSchedule(currentResultsFreq);
+      const work = async () => {
+        await fetch('https://slack.com/api/views.update', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${env.SLACK_BOT_TOKEN}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            view_id: viewId,
+            view: buildEditPollModal(viewMeta.slug || '', {}, { freq: selectedPostFreq, days: [], time: '' }, resultsParsed, currentVotingMode),
+          }),
+        });
+      };
+      if (typeof env._ctx?.waitUntil === 'function') env._ctx.waitUntil(work());
+    } else if (action?.action_id === 'edit_results_frequency_select') {
+      const selectedResultsFreq = action.selected_option?.value || '';
+      const viewId = payload.view?.id;
+      let viewMeta = {};
+      try { viewMeta = JSON.parse(payload.view?.private_metadata || '{}'); } catch {}
+      const v = payload.view?.state?.values || {};
+      const currentPostFreq = v.edit_schedule_frequency?.edit_schedule_frequency_select?.selected_option?.value || '';
+      const currentVotingMode = v.voting_mode?.edit_voting_mode_select?.selected_option?.value || 'reaction';
+      const postParsed = parseSchedule(currentPostFreq);
+      const work = async () => {
+        await fetch('https://slack.com/api/views.update', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${env.SLACK_BOT_TOKEN}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            view_id: viewId,
+            view: buildEditPollModal(viewMeta.slug || '', {}, postParsed, { freq: selectedResultsFreq, days: [], time: '' }, currentVotingMode),
+          }),
+        });
+      };
+      if (typeof env._ctx?.waitUntil === 'function') env._ctx.waitUntil(work());
     } else if (action?.action_id === 'poll_vote') {
       const [slug, optIdxStr] = action.value.split(':');
       const optIdx = parseInt(optIdxStr, 10);
@@ -1192,6 +1526,142 @@ async function handleInteraction(request, env) {
       });
 
     if (typeof env._ctx?.waitUntil === 'function') env._ctx.waitUntil(dispatchPromise);
+    return new Response('', { status: 200 });
+  }
+
+  // ── select_poll_to_edit: user chose a poll to edit → push edit form ────────
+  if (callbackId === 'select_poll_to_edit') {
+    const selected = payload.view.state.values.poll_select?.value?.selected_option?.value || '';
+    const userId = payload.user?.id;
+    const pollData = await getPollData(selected, env);
+    if (!pollData) {
+      return modalError('poll_select', `Poll \`${selected}\` not found.`);
+    }
+    if (pollData.author_id && pollData.author_id !== userId && userId !== env.ADMIN_USER_ID) {
+      return modalError('poll_select', 'Only the poll author or admin can edit this poll.');
+    }
+    const postParsed = parseSchedule(pollData.schedule || '');
+    const resultsParsed = parseSchedule(pollData.results_schedule || '');
+    const votingMode = pollData.voting_mode || 'reaction';
+    const optionsText = (pollData.options || []).map((opt, i) => {
+      const emoji = pollData.emojis?.[i] || '';
+      return emoji ? `:${emoji}: ${opt}` : opt;
+    }).join('\n');
+    const initialValues = {
+      preamble: pollData.preamble || '',
+      optionsText,
+      description: pollData.description || '',
+      anonymous: pollData.anonymous,
+    };
+    return new Response(JSON.stringify({
+      response_action: 'push',
+      view: buildEditPollModal(selected, initialValues, postParsed, resultsParsed, votingMode),
+    }), { headers: { 'Content-Type': 'application/json' } });
+  }
+
+  // ── edit_poll: user saved edits to an existing poll ──────────────────────
+  if (callbackId === 'edit_poll') {
+    const slug = meta.slug || '';
+    const userId = payload.user?.id;
+    const values = payload.view.state.values;
+
+    const preambleRaw = values.poll_preamble?.value?.value?.trim() || '';
+    const optionsRaw = values.poll_options?.value?.value?.trim() || '';
+    const descriptionRaw = values.poll_description?.value?.value?.trim() || '';
+    const votingModeRaw = values.voting_mode?.edit_voting_mode_select?.selected_option?.value || 'reaction';
+    const showVoters = votingModeRaw === 'button' && (values.show_voters?.value?.selected_options || []).some(o => o.value === 'show');
+
+    const scheduleFreq = values.edit_schedule_frequency?.edit_schedule_frequency_select?.selected_option?.value || '';
+    const scheduleDaysOfWeek = (values.edit_schedule_days_of_week?.value?.selected_options || []).map(o => o.value);
+    const scheduleDaysOfMonth = (values.edit_schedule_day_of_month?.value?.selected_options || []).map(o => o.value);
+    const scheduleTime = values.edit_schedule_time?.value?.value || '';
+
+    let scheduleRaw = '';
+    if (scheduleFreq) {
+      if (scheduleFreq === 'daily') {
+        scheduleRaw = `daily ${scheduleTime}`;
+      } else if (scheduleFreq === 'weekly') {
+        scheduleRaw = `${scheduleDaysOfWeek.join(' ')} ${scheduleTime}`;
+      } else if (scheduleFreq === 'monthly') {
+        scheduleRaw = `monthly ${scheduleDaysOfMonth.join(' ')} ${scheduleTime}`;
+      }
+    }
+
+    const resultsFreq = values.edit_results_frequency?.edit_results_frequency_select?.selected_option?.value || '';
+    const resultsDaysOfWeek = (values.edit_results_days_of_week?.value?.selected_options || []).map(o => o.value);
+    const resultsDaysOfMonth = (values.edit_results_day_of_month?.value?.selected_options || []).map(o => o.value);
+    const resultsTime = values.edit_results_time?.value?.value || '';
+
+    let resultsScheduleRaw = '';
+    if (resultsFreq) {
+      if (resultsFreq === 'daily') {
+        resultsScheduleRaw = `daily ${resultsTime}`;
+      } else if (resultsFreq === 'weekly') {
+        resultsScheduleRaw = `${resultsDaysOfWeek.join(' ')} ${resultsTime}`;
+      } else if (resultsFreq === 'monthly') {
+        resultsScheduleRaw = `monthly ${resultsDaysOfMonth.join(' ')} ${resultsTime}`;
+      }
+    }
+
+    const editOptions = [];
+    const editEmojis = [];
+    for (const line of optionsRaw.split('\n').map(l => l.trim()).filter(Boolean)) {
+      const namedMatch = line.match(/^:([a-z0-9_+\-]+):\s*(.+)$/);
+      if (namedMatch) {
+        let emojiName = namedMatch[1];
+        const char = emojiGet(emojiName);
+        if (char) { const canonical = unicodeToSlack(char); if (canonical) emojiName = canonical; }
+        editEmojis.push(emojiName);
+        editOptions.push(namedMatch[2].trim());
+        continue;
+      }
+      const unicodeMatch = line.match(/^(\p{Extended_Pictographic}️?)\s+(.+)$/u);
+      if (unicodeMatch) {
+        const name = unicodeToSlack(unicodeMatch[1]);
+        editEmojis.push(name || NUMBER_EMOJIS[editOptions.length] || 'question');
+        editOptions.push(unicodeMatch[2].trim());
+        continue;
+      }
+      editEmojis.push(NUMBER_EMOJIS[editOptions.length] || 'question');
+      editOptions.push(line);
+    }
+
+    if (editOptions.length < 2) return modalError('poll_options', 'Please enter at least 2 options.');
+    if (editOptions.length > 9) return modalError('poll_options', 'Maximum 9 options allowed.');
+
+    const work = async () => {
+      try {
+        const pollData = await getPollData(slug, env);
+        if (!pollData) { console.error('edit_poll: poll not found:', slug); return; }
+        if (pollData.author_id && pollData.author_id !== userId && userId !== env.ADMIN_USER_ID) {
+          console.error('edit_poll: unauthorized:', userId, slug); return;
+        }
+
+        const updated = { ...pollData };
+        if (preambleRaw) updated.preamble = preambleRaw; else delete updated.preamble;
+        updated.options = editOptions;
+        updated.emojis = editEmojis;
+        if (descriptionRaw) updated.description = descriptionRaw; else delete updated.description;
+        updated.voting_mode = votingModeRaw;
+        if (votingModeRaw === 'button') {
+          updated.anonymous = !showVoters;
+        } else {
+          delete updated.anonymous;
+        }
+        if (scheduleRaw) updated.schedule = scheduleRaw; else delete updated.schedule;
+        if (resultsScheduleRaw) updated.results_schedule = resultsScheduleRaw; else delete updated.results_schedule;
+
+        await updatePollFile(slug, updated, env);
+
+        const channelId = pollData.channel_id || meta.channel_id || '';
+        if (channelId && userId) {
+          await postEphemeral(channelId, userId, `✅ Poll *${pollData.name}* updated successfully!`, env);
+        }
+      } catch (e) {
+        console.error('edit_poll error:', e);
+      }
+    };
+    if (typeof env._ctx?.waitUntil === 'function') env._ctx.waitUntil(work());
     return new Response('', { status: 200 });
   }
 
@@ -1417,6 +1887,25 @@ async function handleSlashCommand(request, env) {
       };
       const dp = deleteWork();
       if (typeof env._ctx?.waitUntil === 'function') env._ctx.waitUntil(dp);
+      return new Response('', { status: 200 });
+    }
+
+    case '/edit': {
+      const editWork = async () => {
+        try {
+          const polls = await listPolls(env) || [];
+          if (polls.length === 0) {
+            await postEphemeral(channelId, userId, 'No custom polls to edit. Use `/create` to make one.', env);
+            return;
+          }
+          await openEditSelectorModal(triggerId, channelId, userId, polls, env);
+        } catch (e) {
+          console.error('edit modal error:', e);
+          await postEphemeral(channelId, userId, '❌ Failed to open edit selector. Please try again.', env);
+        }
+      };
+      const ew = editWork();
+      if (typeof env._ctx?.waitUntil === 'function') env._ctx.waitUntil(ew);
       return new Response('', { status: 200 });
     }
 
