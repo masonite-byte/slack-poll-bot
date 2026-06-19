@@ -1,0 +1,16 @@
+{
+  "name": "Silent Letter Poll",
+  "options": [
+    "It's obviously \"S\"",
+    "Clearly \"C\"... duh"
+  ],
+  "emojis": [
+    "moyai",
+    "satellite"
+  ],
+  "author_id": "U08V6CJ885P",
+  "preamble": "VERY PRESSING ISSUE: What letter is silent in the letter in the word \"scent\"?",
+  "voting_mode": "button",
+  "anonymous": false,
+  "channel_id": "C0BAL95D0U9"
+}
