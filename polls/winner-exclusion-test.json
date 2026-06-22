@@ -1,0 +1,18 @@
+{
+  "name": "Winner-exclusion-test",
+  "options": [
+    "Option 1",
+    "option 2",
+    "option 3"
+  ],
+  "emojis": [
+    "+1",
+    "-1",
+    "joy"
+  ],
+  "author_id": "U08V6CJ885P",
+  "voting_mode": "button",
+  "anonymous": false,
+  "exclude_previous_winner": true,
+  "channel_id": "C0BAL95D0U9"
+}
