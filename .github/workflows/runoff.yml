@@ -8,7 +8,7 @@ on:
         required: false
         default: ''
       poll_name:
-        description: 'Custom poll slug to run runoff for (leave blank for weekly)'
+        description: 'Poll slug to run runoff for (leave blank to use the latest poll)'
         required: false
         default: ''
 

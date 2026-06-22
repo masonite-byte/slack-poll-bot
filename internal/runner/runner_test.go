@@ -3,15 +3,18 @@ package runner
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/masonite-byte/slack-poll-bot/internal/poll"
 	"github.com/masonite-byte/slack-poll-bot/internal/slackclient"
 	"github.com/masonite-byte/slack-poll-bot/internal/testutil"
+	"github.com/slack-go/slack"
 )
 
 func TestRunPostPollSeedsReactions(t *testing.T) {
+	t.Chdir(filepath.Join("..", ".."))
 	m := &testutil.MockAPI{Ts: "123"}
 	if err := RunPostPoll(m); err != nil {
 		t.Fatalf("RunPostPoll error: %v", err)
@@ -21,6 +24,19 @@ func TestRunPostPollSeedsReactions(t *testing.T) {
 	}
 	if len(m.Added) != 6 {
 		t.Fatalf("expected 6 seeded reactions, got %d", len(m.Added))
+	}
+}
+
+func TestRunPostPollExcludesPreviousWinnerFromStoredWeeklyPoll(t *testing.T) {
+	t.Chdir(filepath.Join("..", ".."))
+	m := &testutil.MockAPI{Ts: "123", PreviousWinnerBySlug: map[string]string{"weekly": "Soccer"}}
+	if err := RunPostPoll(m); err != nil {
+		t.Fatalf("RunPostPoll error: %v", err)
+	}
+	for _, reaction := range m.Added {
+		if reaction == "soccer" {
+			t.Fatalf("expected previous winner reaction to be excluded, got %v", m.Added)
+		}
 	}
 }
 
@@ -54,6 +70,19 @@ func TestBuildResultsReportsTopEvent(t *testing.T) {
 	result := BuildResults(tallyResults(reactions, "B0", nil))
 	if !strings.Contains(result, "Top event: Soccer.") {
 		t.Fatalf("expected top event summary for Soccer, got %q", result)
+	}
+}
+
+func TestBuildResultsBlocksIncludesResultsMarker(t *testing.T) {
+	blocks := BuildResultsBlocks([]pollResult{{Name: "soccer", Label: "Soccer", Count: 3}}, "weekly")
+	last := blocks[len(blocks)-1]
+	ctx, ok := last.(*slack.ContextBlock)
+	if !ok {
+		t.Fatalf("expected last block to be results context, got %T", last)
+	}
+	text := ctx.ContextElements.Elements[0].(*slack.TextBlockObject)
+	if text.Text != "results_marker:weekly" {
+		t.Fatalf("expected weekly results marker, got %q", text.Text)
 	}
 }
 
@@ -120,6 +149,31 @@ func TestRunoffPollNoRunoffWhenLeader(t *testing.T) {
 	}
 }
 
+func TestRunResultsForSlugPostsRunoffOnTie(t *testing.T) {
+	t.Chdir(filepath.Join("..", ".."))
+	m := &testutil.MockAPI{
+		Ts:    "321",
+		BotID: "B0",
+		Reactions: []slackclient.Reaction{
+			{Name: "one", Count: 1, Users: []string{"U1"}},
+			{Name: "two", Count: 1, Users: []string{"U2"}},
+		},
+	}
+
+	if err := RunResultsForSlug(m, "schedule-test"); err != nil {
+		t.Fatalf("RunResultsForSlug error: %v", err)
+	}
+	if len(m.Deleted) != 1 || m.Deleted[0] != "321" {
+		t.Fatalf("expected original poll to be deleted before runoff, got %v", m.Deleted)
+	}
+	if len(m.Added) != 2 || m.Added[0] != "one" || m.Added[1] != "two" {
+		t.Fatalf("expected runoff reactions to be seeded, got %v", m.Added)
+	}
+	if !strings.Contains(m.Posted, "Runoff Poll") {
+		t.Fatalf("expected runoff poll to be posted, got %q", m.Posted)
+	}
+}
+
 func TestRunResultsNoPollFoundReturnsErrAndPostsMessage(t *testing.T) {
 	m := &testutil.MockAPI{
 		FindLatestPollErr: fmt.Errorf("no recent poll found in the last 5 pages"),
@@ -174,5 +228,30 @@ func TestRunPostCustomPollButtonModeNoReactionsSeeded(t *testing.T) {
 	}
 	if len(m.Added) != 0 {
 		t.Fatalf("button mode: expected no seeded reactions, got %v", m.Added)
+	}
+}
+
+func TestRunPostCustomPollExcludesPreviousWinnerWhenConfigured(t *testing.T) {
+	m := &testutil.MockAPI{
+		Ts:                   "789",
+		PreviousWinnerBySlug: map[string]string{"weekly": "Soccer"},
+	}
+	p := &poll.CustomPoll{
+		Name:                  "Weekly Sports Poll",
+		Options:               []string{"Soccer", "Basketball", "Volleyball"},
+		Emojis:                []string{"soccer", "basketball", "volleyball"},
+		Slug:                  "weekly",
+		ExcludePreviousWinner: true,
+	}
+	if err := RunPostCustomPoll(m, p); err != nil {
+		t.Fatalf("RunPostCustomPoll error: %v", err)
+	}
+	for _, reaction := range m.Added {
+		if reaction == "soccer" {
+			t.Fatalf("expected Soccer to be excluded, got %v", m.Added)
+		}
+	}
+	if !strings.Contains(m.Posted, "Last posted winner, Soccer, is excluded.") {
+		t.Fatalf("expected exclusion note in posted text, got %q", m.Posted)
 	}
 }

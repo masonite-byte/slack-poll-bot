@@ -6,25 +6,6 @@ import (
 	"github.com/slack-go/slack"
 )
 
-func TestContainsPollHeader(t *testing.T) {
-	cases := []struct {
-		in   string
-		want bool
-	}{
-		{"📊 *Weekly Poll*\nWhat should we do?", true},
-		{"Random message", false},
-		{"📊 *Weekly Poll* - extra", true},
-		{"📊 Weekly Poll", false},
-	}
-
-	for _, c := range cases {
-		got := containsPollHeader(c.in)
-		if got != c.want {
-			t.Fatalf("containsPollHeader(%q) = %v; want %v", c.in, got, c.want)
-		}
-	}
-}
-
 func TestContainsPollMarker(t *testing.T) {
 	markerBlock := slack.NewContextBlock("poll_marker",
 		slack.NewTextBlockObject("mrkdwn", "poll_marker:weekly", false, false),
@@ -58,6 +39,16 @@ func TestPollMarkerSlugExtractsSlug(t *testing.T) {
 	}
 }
 
+func TestResultsMarkerSlugExtractsSlug(t *testing.T) {
+	block := slack.NewContextBlock("results_marker",
+		slack.NewTextBlockObject("mrkdwn", "results_marker:weekly", false, false),
+	)
+	msg := slack.Message{Msg: slack.Msg{Blocks: slack.Blocks{BlockSet: []slack.Block{block}}}}
+	if got := resultsMarkerSlug(msg); got != "weekly" {
+		t.Fatalf("expected weekly results slug, got %q", got)
+	}
+}
+
 func TestPollMarkerSlugReturnsEmptyForNoMarker(t *testing.T) {
 	msg := slack.Message{}
 	if got := pollMarkerSlug(msg); got != "" {
@@ -73,5 +64,12 @@ func TestContainsPollMarkerIgnoresNonPollMarkerBlock(t *testing.T) {
 	msg := slack.Message{Msg: slack.Msg{Blocks: slack.Blocks{BlockSet: []slack.Block{markerBlock}}}}
 	if containsPollMarker(msg) {
 		t.Fatalf("expected non-poll marker block to be ignored")
+	}
+}
+
+func TestParseTopEvent(t *testing.T) {
+	got := parseTopEvent("📊 *Final Poll Results Are In!*\nTop event: Soccer.")
+	if got != "Soccer" {
+		t.Fatalf("expected Soccer, got %q", got)
 	}
 }

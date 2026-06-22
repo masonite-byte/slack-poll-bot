@@ -6,14 +6,16 @@ import (
 )
 
 type MockAPI struct {
-	Posted            string
-	Ts                string
-	PollSlug          string
-	Reactions         []slackclient.Reaction
-	BotID             string
-	Added             []string
-	PreviousWinner    string
-	FindLatestPollErr error
+	Posted               string
+	Ts                   string
+	PollSlug             string
+	Reactions            []slackclient.Reaction
+	BotID                string
+	Added                []string
+	Deleted              []string
+	PreviousWinner       string
+	PreviousWinnerBySlug map[string]string
+	FindLatestPollErr    error
 }
 
 func (m *MockAPI) PostMessage(text string) (string, string, error) {
@@ -35,8 +37,16 @@ func (m *MockAPI) FindLatestPoll() (string, string, error) {
 	return m.Ts, m.PollSlug, m.FindLatestPollErr
 }
 func (m *MockAPI) FindPollBySlug(slug string) (string, error) { return m.Ts, m.FindLatestPollErr }
-func (m *MockAPI) FindPreviousWinner() (string, error)        { return m.PreviousWinner, nil }
-func (m *MockAPI) BotUserID() (string, error)                      { return m.BotID, nil }
-func (m *MockAPI) ChannelID() string                               { return "C" }
-func (m *MockAPI) DeleteMessage(channelID, timestamp string) error { return nil }
-func (m *MockAPI) SendDM(userID, text string) error                { return nil }
+func (m *MockAPI) FindPreviousWinner(slug string) (string, error) {
+	if m.PreviousWinnerBySlug != nil {
+		return m.PreviousWinnerBySlug[slug], nil
+	}
+	return m.PreviousWinner, nil
+}
+func (m *MockAPI) BotUserID() (string, error) { return m.BotID, nil }
+func (m *MockAPI) ChannelID() string          { return "C" }
+func (m *MockAPI) DeleteMessage(channelID, timestamp string) error {
+	m.Deleted = append(m.Deleted, timestamp)
+	return nil
+}
+func (m *MockAPI) SendDM(userID, text string) error { return nil }

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -107,6 +108,7 @@ func TestSlashCommandOptionsResponse(t *testing.T) {
 }
 
 func TestSlashCommandNewPollResponse(t *testing.T) {
+	t.Chdir(filepath.Join("..", ".."))
 	server := New(&testutil.MockAPI{}, "test-secret")
 	form := url.Values{}
 	form.Set("command", "/newpoll")

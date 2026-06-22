@@ -203,6 +203,46 @@ func TestCustomPollLabelMapNumberEmojisFallback(t *testing.T) {
 	}
 }
 
+func TestLoadCustomPollReadsExcludePreviousWinnerFlag(t *testing.T) {
+	withTempPollsDir(t, map[string]string{
+		"weekly.json": `{"name":"Weekly Sports Poll","options":["Soccer","Basketball"],"exclude_previous_winner":true}`,
+	})
+	p, err := LoadCustomPoll("weekly")
+	if err != nil {
+		t.Fatalf("LoadCustomPoll error: %v", err)
+	}
+	if !p.ExcludePreviousWinner {
+		t.Fatal("expected exclude_previous_winner to be true")
+	}
+}
+
+func TestCustomPollWithoutOptionRemovesMatchingOptionAndEmoji(t *testing.T) {
+	p := &CustomPoll{
+		Name:    "Weekly Sports Poll",
+		Options: []string{"Soccer", "Basketball", "Volleyball"},
+		Emojis:  []string{"soccer", "basketball", "volleyball"},
+	}
+
+	updated := p.WithoutOption("Basketball")
+	if len(updated.Options) != 2 || updated.Options[0] != "Soccer" || updated.Options[1] != "Volleyball" {
+		t.Fatalf("expected Basketball to be removed from options, got %v", updated.Options)
+	}
+	if len(updated.Emojis) != 2 || updated.Emojis[0] != "soccer" || updated.Emojis[1] != "volleyball" {
+		t.Fatalf("expected Basketball emoji to be removed, got %v", updated.Emojis)
+	}
+}
+
+func TestCustomPollOptionsTextUsesEmojis(t *testing.T) {
+	p := &CustomPoll{
+		Options: []string{"Soccer", "Basketball"},
+		Emojis:  []string{"soccer", "basketball"},
+	}
+	got := p.OptionsText()
+	if !strings.Contains(got, ":soccer: Soccer") || !strings.Contains(got, ":basketball: Basketball") {
+		t.Fatalf("expected emoji-formatted options text, got %q", got)
+	}
+}
+
 // ── Button voting mode ────────────────────────────────────────────────────────
 
 func TestToPollInstanceButtonModeHasNoEmojis(t *testing.T) {

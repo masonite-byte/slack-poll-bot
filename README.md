@@ -4,9 +4,9 @@ A very scrumtilidicious solution to remove a little responsibility from humans v
 Automated stateless Slack poll system using Go + GitHub Actions.
 
 ## Capabilities
-- Automates weekly poll distributions via Cron (Mondays)
+- Stores the weekly sports poll in `polls/weekly.json`, just like any other custom poll
+- Automates scheduled poll posting and results based on each poll's saved schedule
 - Statelessly discovers and parses reaction-based votes from active threads
-- Publishes standalone poll metrics (Wednesdays)
 
 ## Initialization Requirements
 
