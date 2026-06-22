@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -19,6 +20,22 @@ import (
 	"github.com/masonite-byte/slack-poll-bot/internal/slackclient"
 	"github.com/masonite-byte/slack-poll-bot/internal/testutil"
 )
+
+func chdirToRepoRoot(t *testing.T) {
+	t.Helper()
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
+	}
+	if err := os.Chdir(filepath.Join("..", "..")); err != nil {
+		t.Fatalf("Chdir: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(cwd); err != nil {
+			t.Fatalf("restore cwd: %v", err)
+		}
+	})
+}
 
 func TestSlashCommandResultsResponse(t *testing.T) {
 	api := &testutil.MockAPI{
@@ -108,7 +125,7 @@ func TestSlashCommandOptionsResponse(t *testing.T) {
 }
 
 func TestSlashCommandNewPollResponse(t *testing.T) {
-	t.Chdir(filepath.Join("..", ".."))
+	chdirToRepoRoot(t)
 	server := New(&testutil.MockAPI{}, "test-secret")
 	form := url.Values{}
 	form.Set("command", "/newpoll")
