@@ -416,10 +416,17 @@ func RunResultsForSlug(api slackclient.API, slug string) error {
 func RunPostCustomPoll(api slackclient.API, p *poll.CustomPoll) error {
 	postable := p
 	if p.ExcludePreviousWinner && p.Slug != "" {
-		previousWinner, err := api.FindPreviousWinner(p.Slug)
-		if err != nil {
-			slog.Warn("could not determine previous winner, including all options", "slug", p.Slug, "error", err)
-		} else if previousWinner != "" {
+		// Check the winner state file first (written by the worker after button poll results,
+		// or by the Go runner after reaction poll results). Fall back to scanning channel history.
+		previousWinner := poll.ReadWinnerState(p.Slug)
+		if previousWinner == "" {
+			var err error
+			previousWinner, err = api.FindPreviousWinner(p.Slug)
+			if err != nil {
+				slog.Warn("could not determine previous winner, including all options", "slug", p.Slug, "error", err)
+			}
+		}
+		if previousWinner != "" {
 			filtered := p.WithoutOption(previousWinner)
 			if len(filtered.Options) != len(p.Options) {
 				slog.Info("excluding previous winner from poll", "slug", p.Slug, "winner", previousWinner)

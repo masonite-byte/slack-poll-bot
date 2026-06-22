@@ -347,6 +347,47 @@ function buildButtonPollBlocks(pollData, counts, slug, voters = {}) {
   return blocks;
 }
 
+async function postReactionRunoff(winners, pollData, channelId, env) {
+  const emojiMap = {};
+  if (pollData.emojis) {
+    pollData.options.forEach((opt, i) => { emojiMap[opt] = pollData.emojis[i]; });
+  }
+  const resolveEmoji = (label) => emojiMap[label] || label.toLowerCase().replace(/\s+/g, '_');
+
+  const optionLines = winners.map(w => `    :${resolveEmoji(w)}: ${w}`);
+  const fallback = [
+    '📊 *Runoff Poll*',
+    '@channel: A tie was detected. Vote again for the final winner:',
+    ...optionLines,
+  ].join('\n');
+
+  const blocks = [
+    { type: 'section', text: { type: 'mrkdwn', text: '*📊 Runoff Poll*' } },
+    { type: 'section', text: { type: 'mrkdwn', text: '@channel: A tie was detected. Vote again for the final winner:' } },
+    ...winners.map(w => ({ type: 'section', text: { type: 'mrkdwn', text: `    :${resolveEmoji(w)}: ${w}` } })),
+    { type: 'context', block_id: 'poll_marker', elements: [{ type: 'mrkdwn', text: 'poll_marker:runoff' }] },
+  ];
+
+  const postResp = await fetch('https://slack.com/api/chat.postMessage', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${env.SLACK_BOT_TOKEN}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ channel: channelId, text: fallback, blocks }),
+  });
+  const posted = await postResp.json();
+  if (!posted.ok) {
+    console.error('Failed to post runoff poll:', posted.error);
+    return;
+  }
+  const ts = posted.ts;
+  for (const w of winners) {
+    await fetch('https://slack.com/api/reactions.add', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${env.SLACK_BOT_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channel: channelId, timestamp: ts, name: resolveEmoji(w) }),
+    });
+  }
+}
+
 async function postButtonPollResults(slug, pollData, channelId, userId, env) {
   const prefix = `votes:${slug}:${channelId}:`;
   const { keys } = await env.POLL_VOTES.list({ prefix });
@@ -439,6 +480,11 @@ async function postButtonPollResults(slug, pollData, channelId, userId, env) {
     const isTie = winners.length > 1;
     const winnerLabel = winners.join(' and ');
     const winningLabels = new Set(winners);
+
+    if (!isTie) {
+      updateWinnerState(slug, winners[0], env).catch(e => console.error('updateWinnerState:', e));
+    }
+
     await Promise.allSettled(Object.entries(allVotes).map(async ([voterUserId, optionIndex]) => {
       const votedLabel = pollData.options[parseInt(optionIndex)];
       let msg;
@@ -455,6 +501,10 @@ async function postButtonPollResults(slug, pollData, channelId, userId, env) {
         body: JSON.stringify({ channel: voterUserId, text: msg }),
       });
     }));
+
+    if (isTie) {
+      await postReactionRunoff(winners, pollData, channelId, env);
+    }
   }
 }
 
@@ -541,6 +591,38 @@ async function deletePollFile(slug, env) {
   if (!delResp.ok) {
     const text = await delResp.text();
     throw new Error(`GitHub API ${delResp.status}: ${text}`);
+  }
+}
+
+async function updateWinnerState(slug, winner, env) {
+  const path = 'polls/_winner_state.json';
+  const url = `https://api.github.com/repos/${env.GITHUB_REPO}/contents/${path}`;
+  const getResp = await fetch(url, { headers: ghHeaders(env) });
+  let state = {};
+  let sha = null;
+  if (getResp.ok) {
+    const file = await getResp.json();
+    sha = file.sha;
+    const binary = atob(file.content.replace(/\n/g, ''));
+    const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
+    state = JSON.parse(new TextDecoder().decode(bytes));
+  }
+  state[slug] = winner;
+  const body = {
+    message: `chore: update winner state for ${slug} [skip ci]`,
+    content: toBase64(JSON.stringify(state, null, 2) + '\n'),
+    committer: { name: 'Poll-inator', email: 'pollinator@noreply.github.com' },
+    branch: 'main',
+  };
+  if (sha) body.sha = sha;
+  const putResp = await fetch(url, {
+    method: 'PUT',
+    headers: { ...ghHeaders(env), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!putResp.ok) {
+    const text = await putResp.text();
+    console.error(`Failed to update winner state for ${slug}: ${putResp.status}: ${text}`);
   }
 }
 
