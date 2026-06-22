@@ -299,3 +299,38 @@ func TestRunPostCustomPollExcludesPreviousWinnerWhenConfigured(t *testing.T) {
 		t.Fatalf("expected exclusion note in posted text, got %q", m.Posted)
 	}
 }
+
+func TestRunPostCustomPollUsesWinnerStateFileOverChannelScan(t *testing.T) {
+	chdirToRepoRoot(t)
+	// Write a winner state file that says Soccer won.
+	stateFile := filepath.Join("polls", "_winner_state.json")
+	if err := os.WriteFile(stateFile, []byte(`{"state-file-test": "Soccer"}`), 0644); err != nil {
+		t.Fatalf("write winner state: %v", err)
+	}
+	t.Cleanup(func() { os.Remove(stateFile) })
+
+	// MockAPI returns a DIFFERENT winner from channel history — state file should win.
+	m := &testutil.MockAPI{
+		Ts:                   "789",
+		PreviousWinnerBySlug: map[string]string{"state-file-test": "Basketball"},
+	}
+	p := &poll.CustomPoll{
+		Name:                  "State File Test Poll",
+		Options:               []string{"Soccer", "Basketball", "Volleyball"},
+		Emojis:                []string{"soccer", "basketball", "volleyball"},
+		Slug:                  "state-file-test",
+		ExcludePreviousWinner: true,
+	}
+	if err := RunPostCustomPoll(m, p); err != nil {
+		t.Fatalf("RunPostCustomPoll error: %v", err)
+	}
+	// Soccer (from state file) should be excluded, not Basketball (from mock channel scan).
+	for _, reaction := range m.Added {
+		if reaction == "soccer" {
+			t.Fatalf("expected Soccer (state file winner) to be excluded, got reactions %v", m.Added)
+		}
+	}
+	if !strings.Contains(m.Posted, "Last posted winner, Soccer, is excluded.") {
+		t.Fatalf("expected Soccer exclusion note, got %q", m.Posted)
+	}
+}

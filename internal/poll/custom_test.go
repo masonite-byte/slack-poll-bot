@@ -361,3 +361,31 @@ func TestToBlocksEmptyVotingModeDefaultsToReaction(t *testing.T) {
 		}
 	}
 }
+
+func TestReadWinnerStateMissing(t *testing.T) {
+	withTempPollsDir(t, nil)
+	if got := ReadWinnerState("weekly"); got != "" {
+		t.Fatalf("expected empty string for missing state file, got %q", got)
+	}
+}
+
+func TestReadWinnerStateReturnsWinner(t *testing.T) {
+	withTempPollsDir(t, map[string]string{
+		"_winner_state.json": `{"weekly": "Soccer", "trivia": "Question 3"}`,
+	})
+	if got := ReadWinnerState("weekly"); got != "Soccer" {
+		t.Fatalf("expected Soccer, got %q", got)
+	}
+	if got := ReadWinnerState("trivia"); got != "Question 3" {
+		t.Fatalf("expected Question 3, got %q", got)
+	}
+}
+
+func TestReadWinnerStateUnknownSlug(t *testing.T) {
+	withTempPollsDir(t, map[string]string{
+		"_winner_state.json": `{"weekly": "Soccer"}`,
+	})
+	if got := ReadWinnerState("other"); got != "" {
+		t.Fatalf("expected empty for unknown slug, got %q", got)
+	}
+}

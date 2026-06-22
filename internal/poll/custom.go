@@ -98,6 +98,20 @@ func (p *CustomPoll) WithoutOption(excluded string) *CustomPoll {
 	return &cp
 }
 
+// ReadWinnerState returns the previously saved winner for a poll slug from
+// polls/_winner_state.json. Returns "" if the file doesn't exist or the slug has no entry.
+func ReadWinnerState(slug string) string {
+	data, err := os.ReadFile(filepath.Join(pollsDir, "_winner_state.json"))
+	if err != nil {
+		return ""
+	}
+	var state map[string]string
+	if err := json.Unmarshal(data, &state); err != nil {
+		return ""
+	}
+	return state[slug]
+}
+
 // LoadCustomPoll reads polls/<name>.json from disk.
 func LoadCustomPoll(name string) (*CustomPoll, error) {
 	data, err := os.ReadFile(filepath.Join(pollsDir, name+".json"))
