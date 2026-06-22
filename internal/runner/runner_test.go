@@ -3,6 +3,7 @@ package runner
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -13,8 +14,24 @@ import (
 	"github.com/slack-go/slack"
 )
 
+func chdirToRepoRoot(t *testing.T) {
+	t.Helper()
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
+	}
+	if err := os.Chdir(filepath.Join("..", "..")); err != nil {
+		t.Fatalf("Chdir: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(cwd); err != nil {
+			t.Fatalf("restore cwd: %v", err)
+		}
+	})
+}
+
 func TestRunPostPollSeedsReactions(t *testing.T) {
-	t.Chdir(filepath.Join("..", ".."))
+	chdirToRepoRoot(t)
 	m := &testutil.MockAPI{Ts: "123"}
 	if err := RunPostPoll(m); err != nil {
 		t.Fatalf("RunPostPoll error: %v", err)
@@ -28,7 +45,7 @@ func TestRunPostPollSeedsReactions(t *testing.T) {
 }
 
 func TestRunPostPollExcludesPreviousWinnerFromStoredWeeklyPoll(t *testing.T) {
-	t.Chdir(filepath.Join("..", ".."))
+	chdirToRepoRoot(t)
 	m := &testutil.MockAPI{Ts: "123", PreviousWinnerBySlug: map[string]string{"weekly": "Soccer"}}
 	if err := RunPostPoll(m); err != nil {
 		t.Fatalf("RunPostPoll error: %v", err)
@@ -150,7 +167,7 @@ func TestRunoffPollNoRunoffWhenLeader(t *testing.T) {
 }
 
 func TestRunResultsForSlugPostsRunoffOnTie(t *testing.T) {
-	t.Chdir(filepath.Join("..", ".."))
+	chdirToRepoRoot(t)
 	m := &testutil.MockAPI{
 		Ts:    "321",
 		BotID: "B0",
