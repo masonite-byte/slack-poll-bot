@@ -12,7 +12,15 @@ import (
 func main() {
 	_ = godotenv.Load()
 	client := slackclient.New()
-	result, err := runner.RunoffPoll(client)
+	var (
+		result string
+		err    error
+	)
+	if pollName := os.Getenv("POLL_NAME"); pollName != "" {
+		result, err = runner.RunoffPollForSlug(client, pollName)
+	} else {
+		result, err = runner.RunoffPoll(client)
+	}
 	if err != nil {
 		slog.Error("runoff failed", "error", err)
 		os.Exit(1)

@@ -42,26 +42,72 @@ const ABOUT_TEXT = [
   '_This bot has strong opinions about Ultimate Frisbee._',
 ].join('\n');
 
-// buildScheduleText fetches custom polls with schedules and builds the /schedule response.
+function titleizeSlug(slug) {
+  return slug.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+
+function buildPollChoice(slug, pollData) {
+  return {
+    slug,
+    label: pollData?.name || titleizeSlug(slug),
+    data: pollData || null,
+  };
+}
+
+async function listPollChoices(env) {
+  const slugs = await listPolls(env);
+  if (slugs === null) return null;
+  const choices = await Promise.all(slugs.map(async (slug) => {
+    try {
+      return buildPollChoice(slug, await getPollData(slug, env));
+    } catch (e) {
+      console.error('listPollChoices: failed to fetch poll data', slug, e);
+      return buildPollChoice(slug, null);
+    }
+  }));
+  choices.sort((a, b) => {
+    if (a.slug === 'weekly') return -1;
+    if (b.slug === 'weekly') return 1;
+    return a.label.localeCompare(b.label);
+  });
+  return choices;
+}
+
+function formatPollOptionsText(pollData) {
+  if (!pollData?.options?.length) return POLL_OPTIONS_TEXT;
+  return pollData.options.map((option, index) => {
+    const emoji = pollData.emojis?.[index] || NUMBER_EMOJIS[index] || 'question';
+    return `:${emoji}: ${option}`;
+  }).join('\n');
+}
+
+// buildScheduleText fetches stored polls with schedules and builds the /schedule response.
 async function buildScheduleText(env) {
   const lines = [
     '📅 *Poll Schedule*',
-    '',
-    '*Weekly Sports Poll*',
-    '• *Monday 9:00 AM CT* — Weekly poll posted',
-    '• *Tuesday 5:00 PM CT* — Results posted, voters notified, runoff if tied',
   ];
 
-  let customLines = [];
+  const choices = await listPollChoices(env);
+  if (choices === null) throw new Error('failed to list polls');
+
+  const weekly = choices.find(choice => choice.slug === 'weekly');
+  if (weekly?.data) {
+    lines.push('', `*${weekly.label}*`);
+    if (weekly.data.schedule) {
+      lines.push(`• Post: ${formatSchedule(weekly.data.schedule)}`);
+    }
+    if (weekly.data.results_schedule) {
+      lines.push(`• Results: ${formatSchedule(weekly.data.results_schedule)}`);
+    }
+  }
+
+  const customLines = [];
   try {
-    const slugs = await listPolls(env) || [];
-    for (const slug of slugs) {
-      const data = await getPollData(slug, env);
-      if (!data?.schedule) continue;
-      const label = data.name || slug;
-      customLines.push(`• *${label}* — ${formatSchedule(data.schedule)}`);
-      if (data.results_schedule) {
-        customLines.push(`  ↳ Results: ${formatSchedule(data.results_schedule)}`);
+    for (const choice of choices) {
+      if (choice.slug === 'weekly' || !choice.data?.schedule) continue;
+      customLines.push(`• *${choice.label}* — ${formatSchedule(choice.data.schedule)}`);
+      if (choice.data.results_schedule) {
+        customLines.push(`  ↳ Results: ${formatSchedule(choice.data.results_schedule)}`);
       }
     }
   } catch (e) {
@@ -343,6 +389,7 @@ async function postButtonPollResults(slug, pollData, channelId, userId, env) {
       text: { type: 'mrkdwn', text: `    :${r.emoji}: ${r.label} — ${r.count} vote${r.count !== 1 ? 's' : ''}` },
     })),
     { type: 'section', text: { type: 'mrkdwn', text: summary } },
+    { type: 'context', block_id: 'results_marker', elements: [{ type: 'mrkdwn', text: `results_marker:${slug}` }] },
   ];
 
   // Fallback text matching Go's BuildResults format
@@ -433,13 +480,14 @@ async function pollFileExists(slug, env) {
   return resp.ok;
 }
 
-async function commitPollFile(slug, name, options, emojis, preamble, description, authorId, votingMode, schedule, resultsSchedule, channelId, anonymous, env) {
+async function commitPollFile(slug, name, options, emojis, preamble, description, authorId, votingMode, schedule, resultsSchedule, channelId, anonymous, excludePreviousWinner, env) {
   const url = `https://api.github.com/repos/${env.GITHUB_REPO}/contents/polls/${slug}.json`;
   const pollData = { name, options, emojis, author_id: authorId };
   if (preamble) pollData.preamble = preamble;
   if (description) pollData.description = description;
   if (votingMode && votingMode !== 'reaction') pollData.voting_mode = votingMode;
   if (votingMode === 'button' && anonymous === false) pollData.anonymous = false;
+  if (excludePreviousWinner) pollData.exclude_previous_winner = true;
   if (schedule) pollData.schedule = schedule.toLowerCase().trim();
   if (resultsSchedule) pollData.results_schedule = resultsSchedule.toLowerCase().trim();
   if (channelId) pollData.channel_id = channelId;
@@ -680,6 +728,20 @@ function buildCreatePollModal(channelId, userId, postFreq, resultsFreq, votingMo
           initial_options: [{ text: { type: 'plain_text', text: 'Show who voted under each option' }, value: 'show' }],
         },
       }] : []),
+      {
+        type: 'input',
+        block_id: 'exclude_previous_winner',
+        label: { type: 'plain_text', text: 'Previous Winner Exclusion' },
+        optional: true,
+        element: {
+          type: 'checkboxes',
+          action_id: 'value',
+          options: [{
+            text: { type: 'plain_text', text: 'Exclude the previous posted winner the next time this poll is posted' },
+            value: 'exclude',
+          }],
+        },
+      },
       ...buildScheduleFieldBlocks('schedule', 'Post Schedule', postFreq),
       ...buildScheduleFieldBlocks('results', 'Results Schedule', resultsFreq),
     ],
@@ -800,11 +862,11 @@ function buildEditScheduleFieldBlocks(prefix, labelText, freq, initialTime = '',
 }
 
 // Builds the pre-filled edit form modal.
-// initialValues: { preamble, optionsText, description, anonymous } — omit to let Slack preserve
+// initialValues: { preamble, optionsText, description, anonymous, excludePreviousWinner } — omit to let Slack preserve
 // current text field state (used when rebuilding on dispatch_action).
-function buildEditPollModal(slug, initialValues, postParsed, resultsParsed, votingMode) {
+function buildEditPollModal(slug, pollName, initialValues, postParsed, resultsParsed, votingMode) {
   const vm = votingMode || postParsed.freq ? votingMode : '';
-  const pollLabel = slug.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  const pollLabel = pollName || titleizeSlug(slug);
   const vmInitial = vm === 'button'
     ? { text: { type: 'plain_text', text: 'Button-based — voters click buttons, live counts shown' }, value: 'button' }
     : { text: { type: 'plain_text', text: 'Reaction-based — voters react with emojis' }, value: 'reaction' };
@@ -882,6 +944,23 @@ function buildEditPollModal(slug, initialValues, postParsed, resultsParsed, voti
           : {}),
       },
     }] : []),
+    {
+      type: 'input',
+      block_id: 'exclude_previous_winner',
+      label: { type: 'plain_text', text: 'Previous Winner Exclusion' },
+      optional: true,
+      element: {
+        type: 'checkboxes',
+        action_id: 'value',
+        options: [{
+          text: { type: 'plain_text', text: 'Exclude the previous posted winner the next time this poll is posted' },
+          value: 'exclude',
+        }],
+        ...('excludePreviousWinner' in initialValues && initialValues.excludePreviousWinner
+          ? { initial_options: [{ text: { type: 'plain_text', text: 'Exclude the previous posted winner the next time this poll is posted' }, value: 'exclude' }] }
+          : {}),
+      },
+    },
     ...buildEditScheduleFieldBlocks('schedule', 'Post Schedule', postParsed.freq, postParsed.time, postParsed.days),
     ...buildEditScheduleFieldBlocks('results', 'Results Schedule', resultsParsed.freq, resultsParsed.time, resultsParsed.days),
   ];
@@ -889,7 +968,7 @@ function buildEditPollModal(slug, initialValues, postParsed, resultsParsed, voti
   return {
     type: 'modal',
     callback_id: 'edit_poll',
-    private_metadata: JSON.stringify({ slug }),
+    private_metadata: JSON.stringify({ slug, poll_name: pollLabel }),
     title: { type: 'plain_text', text: 'Edit Poll' },
     submit: { type: 'plain_text', text: 'Save' },
     close: { type: 'plain_text', text: 'Cancel' },
@@ -929,13 +1008,10 @@ async function openModal(triggerId, channelId, userId, env) {
 }
 
 async function openPostPollModal(triggerId, channelId, userId, polls, env) {
-  const options = [
-    { text: { type: 'plain_text', text: '🏃 Weekly Sports Poll' }, value: 'weekly' },
-    ...polls.map(slug => ({
-      text: { type: 'plain_text', text: slug.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') },
-      value: slug,
-    })),
-  ];
+  const options = polls.map(({ slug, label }) => ({
+    text: { type: 'plain_text', text: label },
+    value: slug,
+  }));
 
   const modal = {
     type: 'modal',
@@ -972,13 +1048,10 @@ async function openPostPollModal(triggerId, channelId, userId, polls, env) {
 }
 
 async function openResultsModal(triggerId, channelId, userId, polls, env) {
-  const options = [
-    { text: { type: 'plain_text', text: '🏃 Weekly Sports Poll' }, value: 'weekly' },
-    ...polls.map(slug => ({
-      text: { type: 'plain_text', text: slug.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') },
-      value: slug,
-    })),
-  ];
+  const options = polls.map(({ slug, label }) => ({
+    text: { type: 'plain_text', text: label },
+    value: slug,
+  }));
 
   const modal = {
     type: 'modal',
@@ -1015,13 +1088,10 @@ async function openResultsModal(triggerId, channelId, userId, polls, env) {
 }
 
 async function openRunoffModal(triggerId, channelId, userId, polls, env) {
-  const options = [
-    { text: { type: 'plain_text', text: '🏃 Weekly Sports Poll' }, value: 'weekly' },
-    ...polls.map(slug => ({
-      text: { type: 'plain_text', text: slug.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') },
-      value: slug,
-    })),
-  ];
+  const options = polls.map(({ slug, label }) => ({
+    text: { type: 'plain_text', text: label },
+    value: slug,
+  }));
 
   const modal = {
     type: 'modal',
@@ -1062,8 +1132,8 @@ async function openRunoffModal(triggerId, channelId, userId, polls, env) {
 }
 
 async function openDeleteModal(triggerId, channelId, userId, polls, env) {
-  const options = polls.map(slug => ({
-    text: { type: 'plain_text', text: slug.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') },
+  const options = polls.map(({ slug, label }) => ({
+    text: { type: 'plain_text', text: label },
     value: slug,
   }));
 
@@ -1106,8 +1176,8 @@ async function openDeleteModal(triggerId, channelId, userId, polls, env) {
 }
 
 async function openEditSelectorModal(triggerId, channelId, userId, polls, env) {
-  const options = polls.map(slug => ({
-    text: { type: 'plain_text', text: slug.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') },
+  const options = polls.map(({ slug, label }) => ({
+    text: { type: 'plain_text', text: label },
     value: slug,
   }));
 
@@ -1337,7 +1407,7 @@ async function handleInteraction(request, env) {
           headers: { 'Authorization': `Bearer ${env.SLACK_BOT_TOKEN}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
             view_id: viewId,
-            view: buildEditPollModal(viewMeta.slug || '', {}, postParsed, resultsParsed, selectedVotingMode),
+            view: buildEditPollModal(viewMeta.slug || '', viewMeta.poll_name || '', {}, postParsed, resultsParsed, selectedVotingMode),
           }),
         });
       };
@@ -1357,7 +1427,7 @@ async function handleInteraction(request, env) {
           headers: { 'Authorization': `Bearer ${env.SLACK_BOT_TOKEN}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
             view_id: viewId,
-            view: buildEditPollModal(viewMeta.slug || '', {}, { freq: selectedPostFreq, days: [], time: '' }, resultsParsed, currentVotingMode),
+            view: buildEditPollModal(viewMeta.slug || '', viewMeta.poll_name || '', {}, { freq: selectedPostFreq, days: [], time: '' }, resultsParsed, currentVotingMode),
           }),
         });
       };
@@ -1377,7 +1447,7 @@ async function handleInteraction(request, env) {
           headers: { 'Authorization': `Bearer ${env.SLACK_BOT_TOKEN}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
             view_id: viewId,
-            view: buildEditPollModal(viewMeta.slug || '', {}, postParsed, { freq: selectedResultsFreq, days: [], time: '' }, currentVotingMode),
+            view: buildEditPollModal(viewMeta.slug || '', viewMeta.poll_name || '', {}, postParsed, { freq: selectedResultsFreq, days: [], time: '' }, currentVotingMode),
           }),
         });
       };
@@ -1436,12 +1506,12 @@ async function handleInteraction(request, env) {
   if (callbackId === 'post_poll') {
     const selected = payload.view.state.values.poll_select?.value?.selected_option?.value || '';
     const inputs = { channel_id: meta.channel_id || '' };
-    if (selected && selected !== 'weekly') inputs.poll_name = selected;
+    if (selected) inputs.poll_name = selected;
 
     const dispatchPromise = triggerWorkflow('post_poll.yml', env, inputs)
       .then(() => {
         if (meta.channel_id && meta.user_id) {
-          const label = selected === 'weekly' ? 'Weekly Sports Poll' : selected;
+          const label = payload.view.state.values.poll_select?.value?.selected_option?.text?.text || selected;
           return postEphemeral(meta.channel_id, meta.user_id, `📊 *${label}* is being posted to the channel!`, env);
         }
       })
@@ -1464,14 +1534,14 @@ async function handleInteraction(request, env) {
 
     const work = async () => {
       try {
-        if (selected && selected !== 'weekly') {
+        if (selected) {
           const pollData = await getPollData(selected, env);
           if (pollData?.voting_mode === 'button') {
             await postButtonPollResults(selected, pollData, channelId, userId, env);
             return;
           }
         }
-        await triggerWorkflow('post_results.yml', env, { channel_id: channelId });
+        await triggerWorkflow('post_results.yml', env, { channel_id: channelId, poll_name: selected });
         if (channelId && userId) {
           await postEphemeral(channelId, userId, '📊 Results are being computed and will be posted shortly. The poll will be removed once done.', env);
         }
@@ -1516,7 +1586,7 @@ async function handleInteraction(request, env) {
   if (callbackId === 'run_runoff') {
     const selected = payload.view.state.values.poll_select?.value?.selected_option?.value || '';
     const inputs = { channel_id: meta.channel_id || '' };
-    if (selected && selected !== 'weekly') inputs.poll_name = selected;
+    if (selected) inputs.poll_name = selected;
 
     const dispatchPromise = triggerWorkflow('runoff.yml', env, inputs)
       .then(() => {
@@ -1558,10 +1628,11 @@ async function handleInteraction(request, env) {
       optionsText,
       description: pollData.description || '',
       anonymous: pollData.anonymous,
+      excludePreviousWinner: Boolean(pollData.exclude_previous_winner),
     };
     return new Response(JSON.stringify({
       response_action: 'push',
-      view: buildEditPollModal(selected, initialValues, postParsed, resultsParsed, votingMode),
+      view: buildEditPollModal(selected, pollData.name || titleizeSlug(selected), initialValues, postParsed, resultsParsed, votingMode),
     }), { headers: { 'Content-Type': 'application/json' } });
   }
 
@@ -1576,6 +1647,7 @@ async function handleInteraction(request, env) {
     const descriptionRaw = values.poll_description?.value?.value?.trim() || '';
     const votingModeRaw = values.voting_mode?.edit_voting_mode_select?.selected_option?.value || 'reaction';
     const showVoters = votingModeRaw === 'button' && (values.show_voters?.value?.selected_options || []).some(o => o.value === 'show');
+    const excludePreviousWinner = (values.exclude_previous_winner?.value?.selected_options || []).some(o => o.value === 'exclude');
 
     const scheduleFreq = values.edit_schedule_frequency?.edit_schedule_frequency_select?.selected_option?.value || '';
     const scheduleDaysOfWeek = (values.edit_schedule_days_of_week?.value?.selected_options || []).map(o => o.value);
@@ -1654,6 +1726,7 @@ async function handleInteraction(request, env) {
         } else {
           delete updated.anonymous;
         }
+        if (excludePreviousWinner) updated.exclude_previous_winner = true; else delete updated.exclude_previous_winner;
         if (scheduleRaw) updated.schedule = scheduleRaw; else delete updated.schedule;
         if (resultsScheduleRaw) updated.results_schedule = resultsScheduleRaw; else delete updated.results_schedule;
 
@@ -1681,6 +1754,7 @@ async function handleInteraction(request, env) {
   const descriptionRaw = values.poll_description?.value?.value?.trim() || '';
   const votingModeRaw = values.voting_mode?.voting_mode_select?.selected_option?.value || 'reaction';
   const showVoters = votingModeRaw === 'button' && (values.show_voters?.value?.selected_options || []).some(o => o.value === 'show');
+  const excludePreviousWinner = (values.exclude_previous_winner?.value?.selected_options || []).some(o => o.value === 'exclude');
   const scheduleFreq = values.schedule_frequency?.schedule_frequency_select?.selected_option?.value || '';
   const scheduleDaysOfWeek = (values.schedule_days_of_week?.value?.selected_options || []).map(o => o.value);
   const scheduleDaysOfMonth = (values.schedule_day_of_month?.value?.selected_options || []).map(o => o.value);
@@ -1768,7 +1842,7 @@ async function handleInteraction(request, env) {
     return modalError('poll_name', `A poll named "${nameRaw}" already exists. Choose a different name.`);
   }
 
-  const commitPromise = commitPollFile(slug, nameRaw, options, emojis, preambleRaw, descriptionRaw, payload.user?.id, votingModeRaw, scheduleRaw, resultsScheduleRaw, meta.channel_id || '', showVoters ? false : true, env)
+  const commitPromise = commitPollFile(slug, nameRaw, options, emojis, preambleRaw, descriptionRaw, payload.user?.id, votingModeRaw, scheduleRaw, resultsScheduleRaw, meta.channel_id || '', showVoters ? false : true, excludePreviousWinner, env)
     .then(async () => {
       const promises = [];
       if (meta.channel_id && meta.user_id) {
@@ -1833,29 +1907,41 @@ async function handleSlashCommand(request, env) {
       return ephemeral(HELP_TEXT);
 
     case '/vote':
-      return ephemeral([
-        '🗳️ *How to Vote (Yes, We Know You Need This Explained)*',
-        '',
-        "Voting is done via emoji reactions. It is, objectively, the simplest possible interaction a human can perform — and yet, here we are.",
-        '',
-        '*Step 1:* Find the poll in the channel. It\'s the big block of text that starts with 📊. You\'ve probably scrolled past it already.',
-        '',
-        '*Step 2:* Hover over the poll message and click the emoji button (the little 🙂 that appears on the right). On mobile, long-press the message like you\'re trying to intimidate it.',
-        '',
-        '*Step 3:* Find and select the emoji that matches your choice. For the weekly poll, your options are:',
-        POLL_OPTIONS_TEXT,
-        '',
-        'For custom polls, the options are numbered — use 1️⃣ 2️⃣ 3️⃣ etc., exactly as shown in the poll message. The labels are right there. Read them.',
-        '',
-        '*Step 4:* That\'s it. You\'re done. There is no step 5. Please rejoin society.',
-        '',
-        '_One reaction per option. Voting for everything is not a strategy, it\'s a cry for help. Use `/results` to watch your pick lose in real time._',
-      ].join('\n'));
+      try {
+        const weeklyPoll = await getPollData('weekly', env);
+        return ephemeral([
+          '🗳️ *How to Vote (Yes, We Know You Need This Explained)*',
+          '',
+          "Voting is done via emoji reactions. It is, objectively, the simplest possible interaction a human can perform — and yet, here we are.",
+          '',
+          '*Step 1:* Find the poll in the channel. It\'s the big block of text that starts with 📊. You\'ve probably scrolled past it already.',
+          '',
+          '*Step 2:* Hover over the poll message and click the emoji button (the little 🙂 that appears on the right). On mobile, long-press the message like you\'re trying to intimidate it.',
+          '',
+          '*Step 3:* Find and select the emoji that matches your choice. For the weekly poll, your options are:',
+          formatPollOptionsText(weeklyPoll),
+          '',
+          'For custom polls, the options are shown right in the poll message. If the poll uses default numbering, react with 1️⃣ 2️⃣ 3️⃣ and so on.',
+          '',
+          '*Step 4:* That\'s it. You\'re done. There is no step 5. Please rejoin society.',
+          '',
+          '_One reaction per option. Voting for everything is not a strategy, it\'s a cry for help. Use `/results` to watch your pick lose in real time._',
+        ].join('\n'));
+      } catch (e) {
+        console.error('vote help error:', e);
+        return ephemeral([
+          '🗳️ *How to Vote (Yes, We Know You Need This Explained)*',
+          '',
+          '*Step 1:* Find the poll in the channel.',
+          '*Step 2:* Add the emoji reaction that matches your choice.',
+          '*Step 3:* Use `/results` to check the tally.',
+        ].join('\n'));
+      }
 
     case '/results': {
       const resultsWork = async () => {
         try {
-          const polls = await listPolls(env) || [];
+          const polls = await listPollChoices(env) || [];
           await openResultsModal(triggerId, channelId, userId, polls, env);
         } catch (e) {
           console.error('results modal error:', e);
@@ -1870,7 +1956,7 @@ async function handleSlashCommand(request, env) {
     case '/newpoll': {
       const newpollWork = async () => {
         try {
-          const polls = await listPolls(env) || [];
+          const polls = await listPollChoices(env) || [];
           await openPostPollModal(triggerId, channelId, userId, polls, env);
         } catch (e) {
           console.error('newpoll modal error:', e);
@@ -1885,7 +1971,7 @@ async function handleSlashCommand(request, env) {
     case '/runoff': {
       const runoffWork = async () => {
         try {
-          const polls = await listPolls(env) || [];
+          const polls = await listPollChoices(env) || [];
           await openRunoffModal(triggerId, channelId, userId, polls, env);
         } catch (e) {
           console.error('runoff modal error:', e);
@@ -1900,7 +1986,7 @@ async function handleSlashCommand(request, env) {
     case '/delete': {
       const deleteWork = async () => {
         try {
-          const polls = await listPolls(env) || [];
+          const polls = await listPollChoices(env) || [];
           if (polls.length === 0) {
             await postEphemeral(channelId, userId, 'No custom polls to delete. Use `/create` to make one.', env);
             return;
@@ -1919,7 +2005,7 @@ async function handleSlashCommand(request, env) {
     case '/edit': {
       const editWork = async () => {
         try {
-          const polls = await listPolls(env) || [];
+          const polls = await listPollChoices(env) || [];
           if (polls.length === 0) {
             await postEphemeral(channelId, userId, 'No custom polls to edit. Use `/create` to make one.', env);
             return;
@@ -1951,9 +2037,9 @@ async function handleSlashCommand(request, env) {
 
     case '/polls': {
       try {
-        const polls = await listPolls(env);
+        const polls = await listPollChoices(env);
         if (polls === null) return ephemeral('Failed to fetch polls. Please try again.');
-        const lines = ['• `weekly` — 🏃 Weekly Sports Poll', ...polls.map(p => `• \`${p}\``)];
+        const lines = polls.map(p => `• \`${p.slug}\` — ${p.label}`);
         return ephemeral(`📋 *Available Polls*\n\n${lines.join('\n')}\n\nUse \`/newpoll\` to post one or \`/create\` to add a custom poll.`);
       } catch (e) {
         console.error('polls list error:', e);

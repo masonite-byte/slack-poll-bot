@@ -25,21 +25,7 @@ var (
 		"athletic_shoe": "Hackeysack",
 		"question":      "Other?????",
 	}
-
-	DefaultPollOptions = []string{"Soccer", "Basketball", "Ultimate Frisbee", "Volleyball", "Hackeysack", "Other?????"}
 )
-
-func weeklyPoll() string {
-	poll := fmt.Sprintf("@channel: 📊 *Weekly Poll*\n\nWhat sporting event should we do this week???")
-	for _, option := range DefaultPollOptions {
-		if emoji, ok := OptionReactions[option]; ok {
-			poll += fmt.Sprintf("\n    :%s: %s", emoji, option)
-		} else {
-			poll += fmt.Sprintf("\n Error generating this option: %s", option)
-		}
-	}
-	return poll
-}
 
 // PollInstance represents a poll's fallback text and the emoji reactions used to seed it.
 type PollInstance struct {
@@ -47,83 +33,16 @@ type PollInstance struct {
 	Emojis []string
 }
 
-func filteredOptions(excluded string) []string {
-	options := make([]string, 0, len(DefaultPollOptions))
-	for _, opt := range DefaultPollOptions {
-		if opt != excluded {
-			options = append(options, opt)
-		}
-	}
-	return options
-}
-
-// GetWeeklyPoll returns a structured weekly poll including the text and emojis.
-func GetWeeklyPoll() PollInstance {
-	text := weeklyPoll()
-	emojis := make([]string, 0, len(DefaultPollOptions))
-	for _, opt := range DefaultPollOptions {
-		if r, ok := OptionReactions[opt]; ok {
-			emojis = append(emojis, r)
-		} else {
-			emojis = append(emojis, strings.ToLower(strings.ReplaceAll(opt, " ", "_")))
-		}
-	}
-	return PollInstance{Text: text, Emojis: emojis}
-}
-
-// GetWeeklyPollExcluding returns a weekly poll with the given option removed.
-func GetWeeklyPollExcluding(excluded string) PollInstance {
-	options := filteredOptions(excluded)
-	text := fmt.Sprintf("@channel: 📊 *Weekly Poll*\n\nWhat sporting event should we do this week???")
-	for _, opt := range options {
-		if emoji, ok := OptionReactions[opt]; ok {
-			text += fmt.Sprintf("\n    :%s: %s", emoji, opt)
-		}
-	}
-	emojis := make([]string, 0, len(options))
-	for _, opt := range options {
-		if r, ok := OptionReactions[opt]; ok {
-			emojis = append(emojis, r)
-		} else {
-			emojis = append(emojis, strings.ToLower(strings.ReplaceAll(opt, " ", "_")))
-		}
-	}
-	return PollInstance{Text: text, Emojis: emojis}
-}
-
-// WeeklyPollBlocksExcluding returns Block Kit blocks for a weekly poll with one option excluded.
-func WeeklyPollBlocksExcluding(excluded string) []slack.Block {
-	return BuildPollBlocks(
-		"Weekly Poll",
-		fmt.Sprintf("@channel: What sporting event should we do this week???\n\n_(Last week's winner, %s, is excluded.)_\n\nReact with one of the options below:", excluded),
-		"weekly",
-		filteredOptions(excluded),
-	)
-}
-
 // GetRunoffPoll returns a structured runoff poll including fallback text and emojis for the given options.
 func GetRunoffPoll(options []string) PollInstance {
 	text := "📊 *Runoff Poll*\n@channel: A tie was detected. Vote again for the final winner:"
 	emojis := make([]string, 0, len(options))
 	for _, opt := range options {
-		reaction, ok := OptionReactions[opt]
-		if !ok {
-			reaction = strings.ToLower(strings.ReplaceAll(opt, " ", "_"))
-		}
+		reaction := reactionForOption(opt)
 		text += fmt.Sprintf("\n    :%s: %s", reaction, opt)
 		emojis = append(emojis, reaction)
 	}
 	return PollInstance{Text: text, Emojis: emojis}
-}
-
-// WeeklyPollBlocks returns Block Kit blocks for the weekly poll.
-func WeeklyPollBlocks() []slack.Block {
-	return BuildPollBlocks(
-		"Weekly Poll",
-		"@channel: What sporting event should we do this week???\n\nReact with one of the options below:",
-		"weekly",
-		DefaultPollOptions,
-	)
 }
 
 // RunoffPollBlocks returns a Block Kit poll with the given tied option labels.
@@ -146,10 +65,7 @@ func BuildPollBlocks(title, prompt, marker string, options []string) []slack.Blo
 
 	blocks := []slack.Block{header, promptSection}
 	for _, option := range options {
-		reaction, ok := OptionReactions[option]
-		if !ok {
-			reaction = strings.ToLower(strings.ReplaceAll(option, " ", "_"))
-		}
+		reaction := reactionForOption(option)
 		blocks = append(blocks, slack.NewSectionBlock(
 			slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("    :%s: %s", reaction, option), false, false),
 			nil,
@@ -165,15 +81,9 @@ func BuildPollBlocks(title, prompt, marker string, options []string) []slack.Blo
 	return blocks
 }
 
-// PollOptionsText returns the poll option list for help and commands.
-func PollOptionsText() string {
-	lines := make([]string, 0, len(DefaultPollOptions))
-	for _, option := range DefaultPollOptions {
-		if emoji, ok := OptionReactions[option]; ok {
-			lines = append(lines, fmt.Sprintf(":%s: %s", emoji, option))
-		} else {
-			lines = append(lines, option)
-		}
+func reactionForOption(option string) string {
+	if reaction, ok := OptionReactions[option]; ok {
+		return reaction
 	}
-	return strings.Join(lines, "\n")
+	return strings.ToLower(strings.ReplaceAll(option, " ", "_"))
 }

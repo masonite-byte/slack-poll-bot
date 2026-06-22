@@ -30,7 +30,7 @@ type API interface {
 	GetReactions(timestamp string) ([]Reaction, error)
 	FindLatestPoll() (timestamp, slug string, err error)
 	FindPollBySlug(slug string) (timestamp string, err error)
-	FindPreviousWinner() (string, error)
+	FindPreviousWinner(slug string) (string, error)
 	BotUserID() (string, error)
 	ChannelID() string
 	DeleteMessage(channelID, timestamp string) error
@@ -147,9 +147,6 @@ func (c *Client) FindLatestPoll() (timestamp, slug string, err error) {
 			if s := pollMarkerSlug(msg); s != "" {
 				return msg.Timestamp, s, nil
 			}
-			if containsPollHeader(msg.Text) {
-				return msg.Timestamp, "weekly", nil
-			}
 		}
 
 		if history.ResponseMetaData.NextCursor == "" {
@@ -214,16 +211,12 @@ func pollMarkerSlug(msg slack.Message) string {
 	return ""
 }
 
-func containsPollMarker(msg slack.Message) bool {
-	return pollMarkerSlug(msg) != ""
-}
-
-func containsPollHeader(text string) bool {
-	return strings.HasPrefix(text, "📊 *Weekly Poll*")
-}
-
-// FindPreviousWinner scans channel history for the most recent results message and returns the winner.
-func (c *Client) FindPreviousWinner() (string, error) {
+// FindPreviousWinner scans channel history for the most recent results message
+// for the given poll slug and returns the winner, if there was one.
+func (c *Client) FindPreviousWinner(slug string) (string, error) {
+	if slug == "" {
+		return "", nil
+	}
 	params := &slack.GetConversationHistoryParameters{
 		ChannelID: c.channelID,
 		Limit:     200,
@@ -237,9 +230,13 @@ func (c *Client) FindPreviousWinner() (string, error) {
 		}
 
 		for _, msg := range history.Messages {
+			if resultsMarkerSlug(msg) != slug {
+				continue
+			}
 			if winner := parseTopEvent(msg.Text); winner != "" {
 				return winner, nil
 			}
+			return "", nil
 		}
 
 		if history.ResponseMetaData.NextCursor == "" {
@@ -249,6 +246,34 @@ func (c *Client) FindPreviousWinner() (string, error) {
 	}
 
 	return "", nil
+}
+
+func containsPollMarker(msg slack.Message) bool {
+	return pollMarkerSlug(msg) != ""
+}
+
+func resultsMarkerSlug(msg slack.Message) string {
+	if msg.Blocks.BlockSet == nil {
+		return ""
+	}
+	for _, block := range msg.Blocks.BlockSet {
+		var ctx *slack.ContextBlock
+		switch b := block.(type) {
+		case *slack.ContextBlock:
+			ctx = b
+		case slack.ContextBlock:
+			ctx = &b
+		default:
+			continue
+		}
+		if ctx.BlockID != "results_marker" || len(ctx.ContextElements.Elements) == 0 {
+			continue
+		}
+		if txt, ok := ctx.ContextElements.Elements[0].(*slack.TextBlockObject); ok {
+			return strings.TrimPrefix(txt.Text, "results_marker:")
+		}
+	}
+	return ""
 }
 
 func parseTopEvent(text string) string {

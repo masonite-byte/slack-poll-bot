@@ -1,9 +1,6 @@
 name: Post Poll
 
 on:
-  schedule:
-    - cron: "5 14 * * 1" # Mon 9:05 AM CT (CDT)
-    - cron: "5 15 * * 1" # Mon 9:05 AM CT (CST)
   workflow_dispatch:
     inputs:
       channel_id:
@@ -11,7 +8,7 @@ on:
         required: false
         default: ''
       poll_name:
-        description: 'Named custom poll to post (leave empty for default weekly poll)'
+        description: 'Poll slug to post (leave empty to use the stored weekly poll)'
         required: false
         default: ''
 
@@ -26,22 +23,7 @@ jobs:
           go-version: "1.22"
           cache: true
 
-      - name: Verify CT local time
-        id: time-check
-        if: github.event_name == 'schedule'
-        run: |
-          CURRENT_DAY=$(TZ=America/Chicago date +'%u')
-          CURRENT_HOUR=$(TZ=America/Chicago date +'%H')
-          echo "Chicago time — day: $CURRENT_DAY, hour: $CURRENT_HOUR"
-          if [ "$CURRENT_DAY" = "1" ] && [ "$CURRENT_HOUR" = "09" ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "Not Monday 09:xx CT — skipping"
-            echo "run=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - run: go run ./cmd/postpoll
-        if: github.event_name == 'workflow_dispatch' || steps.time-check.outputs.run == 'true'
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           SLACK_CHANNEL_ID: ${{ inputs.channel_id || secrets.SLACK_CHANNEL_ID }}

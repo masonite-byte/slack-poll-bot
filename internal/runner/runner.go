@@ -68,36 +68,13 @@ type pollResult struct {
 	Count int
 }
 
-// RunPostPoll posts the poll and seeds initial reactions using the provided API.
-// If a previous winner is found in channel history, that option is excluded from the poll.
+// RunPostPoll posts the stored weekly poll and seeds initial reactions using the provided API.
 func RunPostPoll(api slackclient.API) error {
-	previousWinner, err := api.FindPreviousWinner()
+	weeklyPoll, err := poll.LoadCustomPoll("weekly")
 	if err != nil {
-		slog.Warn("could not determine previous winner, including all options", "error", err)
+		return fmt.Errorf("load weekly poll: %w", err)
 	}
-
-	var instance poll.PollInstance
-	var blocks []slack.Block
-	if previousWinner != "" {
-		slog.Info("excluding previous winner from poll", "winner", previousWinner)
-		instance = poll.GetWeeklyPollExcluding(previousWinner)
-		blocks = poll.WeeklyPollBlocksExcluding(previousWinner)
-	} else {
-		instance = poll.GetWeeklyPoll()
-		blocks = poll.WeeklyPollBlocks()
-	}
-
-	_, timestamp, err := api.PostBlocks(instance.Text, blocks...)
-	if err != nil {
-		return err
-	}
-
-	for _, e := range instance.Emojis {
-		if err := api.AddReaction(e, timestamp); err != nil {
-			slog.Warn("failed to seed reaction", "emoji", e, "error", err)
-		}
-	}
-	return nil
+	return RunPostCustomPoll(api, weeklyPoll)
 }
 
 // RunResults finds the latest poll, computes vote counts (excluding bot), posts the summary,
@@ -125,7 +102,7 @@ func RunResults(api slackclient.API) (string, bool, error) {
 	labels := buildLabelMap(slug)
 	results := tallyResults(reactions, botID, labels)
 	message := BuildResults(results)
-	blocks := BuildResultsBlocks(results)
+	blocks := BuildResultsBlocks(results, slug)
 	if _, _, err := api.PostBlocks(message, blocks...); err != nil {
 		slog.Error("failed to post results", "error", err)
 	}
@@ -181,7 +158,7 @@ func BuildResults(results []pollResult) string {
 }
 
 // BuildResultsBlocks returns Block Kit blocks for the results summary, matching the poll message style.
-func BuildResultsBlocks(results []pollResult) []slack.Block {
+func BuildResultsBlocks(results []pollResult, slug string) []slack.Block {
 	header := slack.NewSectionBlock(
 		slack.NewTextBlockObject("mrkdwn", "📊 *Final Poll Results Are In!*", false, false),
 		nil, nil,
@@ -210,6 +187,11 @@ func BuildResultsBlocks(results []pollResult) []slack.Block {
 		slack.NewTextBlockObject("mrkdwn", summary, false, false),
 		nil, nil,
 	))
+	if slug != "" {
+		blocks = append(blocks, slack.NewContextBlock("results_marker",
+			slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("results_marker:%s", slug), false, false),
+		))
+	}
 
 	return blocks
 }
@@ -239,7 +221,18 @@ func RunoffPoll(api slackclient.API) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	return runoffPollForSlug(api, timestamp, slug)
+}
 
+func RunoffPollForSlug(api slackclient.API, slug string) (string, error) {
+	timestamp, err := api.FindPollBySlug(slug)
+	if err != nil {
+		return "", err
+	}
+	return runoffPollForSlug(api, timestamp, slug)
+}
+
+func runoffPollForSlug(api slackclient.API, timestamp, slug string) (string, error) {
 	reactions, err := api.GetReactions(timestamp)
 	if err != nil {
 		return "", err
@@ -269,19 +262,7 @@ func RunoffPoll(api slackclient.API) (string, error) {
 		return "", err
 	}
 
-	instance := poll.GetRunoffPoll(winning)
-	blocks := poll.RunoffPollBlocks(winning)
-	_, timestamp, err = api.PostBlocks(instance.Text, blocks...)
-	if err != nil {
-		return "", err
-	}
-	for _, e := range instance.Emojis {
-		if err := api.AddReaction(e, timestamp); err != nil {
-			slog.Warn("failed to seed runoff reaction", "emoji", e, "error", err)
-		}
-	}
-
-	return fmt.Sprintf("Runoff poll posted with tied options: %s.", strings.Join(winning, ", ")), nil
+	return postRunoffPoll(api, winning)
 }
 
 // NotifyVoters DMs each voter once with a randomly chosen winner or loser message.
@@ -348,7 +329,7 @@ func NotifyVoters(api slackclient.API) error {
 }
 
 // RunResultsForSlug finds the most recent poll with the given slug, tallies results, posts them,
-// notifies voters with DMs, and deletes the original poll.
+// notifies voters with DMs, then either deletes the original poll or replaces it with a runoff poll.
 func RunResultsForSlug(api slackclient.API, slug string) error {
 	timestamp, err := api.FindPollBySlug(slug)
 	if err != nil {
@@ -371,7 +352,7 @@ func RunResultsForSlug(api slackclient.API, slug string) error {
 	labels := buildLabelMap(slug)
 	results := tallyResults(reactions, botID, labels)
 	message := BuildResults(results)
-	blocks := BuildResultsBlocks(results)
+	blocks := BuildResultsBlocks(results, slug)
 	if _, _, err := api.PostBlocks(message, blocks...); err != nil {
 		slog.Error("failed to post results", "error", err)
 	}
@@ -417,6 +398,13 @@ func RunResultsForSlug(api slackclient.API, slug string) error {
 		}
 	}
 
+	if isTie {
+		if _, err := postRunoffPollAfterDelete(api, timestamp, winning); err != nil {
+			slog.Warn("failed to post runoff after tie", "slug", slug, "error", err)
+		}
+		return nil
+	}
+
 	if err := api.DeleteMessage(api.ChannelID(), timestamp); err != nil {
 		slog.Warn("failed to delete poll after posting results", "slug", slug, "error", err)
 	}
@@ -426,8 +414,28 @@ func RunResultsForSlug(api slackclient.API, slug string) error {
 
 // RunPostCustomPoll posts a user-created custom poll and seeds its reactions.
 func RunPostCustomPoll(api slackclient.API, p *poll.CustomPoll) error {
-	instance := p.ToPollInstance()
-	blocks := p.ToBlocks()
+	postable := p
+	if p.ExcludePreviousWinner && p.Slug != "" {
+		previousWinner, err := api.FindPreviousWinner(p.Slug)
+		if err != nil {
+			slog.Warn("could not determine previous winner, including all options", "slug", p.Slug, "error", err)
+		} else if previousWinner != "" {
+			filtered := p.WithoutOption(previousWinner)
+			if len(filtered.Options) != len(p.Options) {
+				slog.Info("excluding previous winner from poll", "slug", p.Slug, "winner", previousWinner)
+				postable = filtered
+				note := fmt.Sprintf("_(Last posted winner, %s, is excluded.)_", previousWinner)
+				if postable.Preamble != "" {
+					postable.Preamble += "\n\n" + note
+				} else {
+					postable.Preamble = note
+				}
+			}
+		}
+	}
+
+	instance := postable.ToPollInstance()
+	blocks := postable.ToBlocks()
 	_, timestamp, err := api.PostBlocks(instance.Text, blocks...)
 	if err != nil {
 		return err
@@ -471,13 +479,25 @@ func BuildHelpText() string {
 }
 
 func BuildOptionsText() string {
-	return "Available poll options:\n" + poll.PollOptionsText()
+	weeklyPoll, err := poll.LoadCustomPoll("weekly")
+	if err != nil {
+		slog.Warn("could not load weekly poll options", "error", err)
+		return "Available poll options:\n:soccer: Soccer\n:basketball: Basketball\n:flying_disc: Ultimate Frisbee\n:volleyball: Volleyball\n:athletic_shoe: Hackeysack\n:question: Other?????"
+	}
+	return "Available poll options:\n" + weeklyPoll.OptionsText()
 }
 
 func BuildVoteHelpText() string {
+	weeklyPoll, err := poll.LoadCustomPoll("weekly")
+	optionsText := ":soccer: Soccer\n:basketball: Basketball\n:flying_disc: Ultimate Frisbee\n:volleyball: Volleyball\n:athletic_shoe: Hackeysack\n:question: Other?????"
+	if err != nil {
+		slog.Warn("could not load weekly vote help options", "error", err)
+	} else {
+		optionsText = weeklyPoll.OptionsText()
+	}
 	return strings.Join([]string{
 		"Vote by reacting to the current poll message with one of the following emojis:",
-		poll.PollOptionsText(),
+		optionsText,
 		"Use /results to check the current tally.",
 	}, "\n")
 }
@@ -543,9 +563,9 @@ func findWinners(results []pollResult) (int, []string) {
 }
 
 // buildLabelMap returns the emoji→label map for a poll slug.
-// Returns nil for the weekly and runoff polls, which use poll.ReactionLabels directly.
+// Returns nil for the runoff poll, which uses poll.ReactionLabels directly.
 func buildLabelMap(slug string) map[string]string {
-	if slug == "" || slug == "weekly" || slug == "runoff" {
+	if slug == "" || slug == "runoff" {
 		return nil
 	}
 	cp, err := poll.LoadCustomPoll(slug)
@@ -567,6 +587,28 @@ func resolveLabel(emojiName string, labels map[string]string) string {
 		return l
 	}
 	return emojiName
+}
+
+func postRunoffPoll(api slackclient.API, winning []string) (string, error) {
+	instance := poll.GetRunoffPoll(winning)
+	blocks := poll.RunoffPollBlocks(winning)
+	_, timestamp, err := api.PostBlocks(instance.Text, blocks...)
+	if err != nil {
+		return "", err
+	}
+	for _, e := range instance.Emojis {
+		if err := api.AddReaction(e, timestamp); err != nil {
+			slog.Warn("failed to seed runoff reaction", "emoji", e, "error", err)
+		}
+	}
+	return fmt.Sprintf("Runoff poll posted with tied options: %s.", strings.Join(winning, ", ")), nil
+}
+
+func postRunoffPollAfterDelete(api slackclient.API, timestamp string, winning []string) (string, error) {
+	if err := api.DeleteMessage(api.ChannelID(), timestamp); err != nil {
+		return "", err
+	}
+	return postRunoffPoll(api, winning)
 }
 
 func tallyResults(reactions []slackclient.Reaction, botID string, labels map[string]string) []pollResult {

@@ -7,16 +7,6 @@ import (
 	"github.com/slack-go/slack"
 )
 
-func TestWeeklyPollContainsHeaderAndOptions(t *testing.T) {
-	s := weeklyPoll()
-	if !strings.HasPrefix(s, "@channel: 📊 *Weekly Poll*") {
-		t.Fatalf("WeeklyPoll() missing header; got: %q", s)
-	}
-	if !strings.Contains(s, "Soccer") || !strings.Contains(s, "Basketball") || !strings.Contains(s, "Ultimate Frisbee") {
-		t.Fatalf("WeeklyPoll() missing expected options; got: %q", s)
-	}
-}
-
 func TestBuildPollBlocksIncludesMarkerAndOptions(t *testing.T) {
 	blocks := BuildPollBlocks("Test Poll", "Vote now:", "testmarker", []string{"Option A", "Option B"})
 	if len(blocks) != 5 {
@@ -56,9 +46,16 @@ func TestRunoffPollBlocksPreservesTieOptions(t *testing.T) {
 	}
 }
 
-func TestPollOptionsTextIncludesAllDefaultOptions(t *testing.T) {
-	got := PollOptionsText()
-	if !strings.Contains(got, ":soccer: Soccer") || !strings.Contains(got, ":basketball: Basketball") || !strings.Contains(got, ":flying_disc: Ultimate Frisbee") {
-		t.Fatalf("PollOptionsText() output missing expected options; got: %q", got)
+func TestGetRunoffPollUsesSportsEmojiMapWhenAvailable(t *testing.T) {
+	instance := GetRunoffPoll([]string{"Soccer", "Basketball"})
+	if !strings.Contains(instance.Text, ":soccer: Soccer") || !strings.Contains(instance.Text, ":basketball: Basketball") {
+		t.Fatalf("expected sports emoji shortcodes in runoff text, got %q", instance.Text)
+	}
+}
+
+func TestGetRunoffPollFallsBackToSlugifiedEmojiName(t *testing.T) {
+	instance := GetRunoffPoll([]string{"Team Relay"})
+	if len(instance.Emojis) != 1 || instance.Emojis[0] != "team_relay" {
+		t.Fatalf("expected slugified fallback emoji name, got %v", instance.Emojis)
 	}
 }

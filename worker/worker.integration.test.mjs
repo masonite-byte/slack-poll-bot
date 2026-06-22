@@ -26,6 +26,11 @@ function ghPollBody(pollObj) {
   return JSON.stringify({ content: toBase64(JSON.stringify(pollObj)) });
 }
 
+function decodeGitHubContent(body) {
+  const parsed = JSON.parse(body);
+  return JSON.parse(atob(parsed.content));
+}
+
 const SIGNING_SECRET = 'test-secret-32-chars-long-enough!';
 
 function slackSign(body, timestamp = Math.floor(Date.now() / 1000).toString()) {
@@ -210,6 +215,23 @@ describe('slash commands', () => {
     assert.equal(body.response_type, 'ephemeral');
     assert.match(body.text, /Available Polls/i);
   });
+
+  test('/polls includes stored weekly poll label', async () => {
+    mockFetch({
+      '/contents/polls/weekly.json': [ghPollBody({ name: 'Weekly Sports Poll', options: ['Soccer', 'Basketball'] })],
+      '/contents/polls/summer-sports.json': [ghPollBody({ name: 'Summer Sports', options: ['Frisbee', 'Volleyball'] })],
+      '/contents/polls': [JSON.stringify([
+        { type: 'file', name: 'weekly.json' },
+        { type: 'file', name: 'summer-sports.json' },
+      ])],
+    });
+
+    const res = await worker.fetch(makeSlashRequest('/polls'), makeEnv(), {});
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.match(body.text, /`weekly` — Weekly Sports Poll/);
+    assert.match(body.text, /`summer-sports` — Summer Sports/);
+  });
 });
 
 // ── Interaction routing ───────────────────────────────────────────────────────
@@ -313,5 +335,220 @@ describe('poll_vote', () => {
 
     const stored = await kv.get('votes:test-poll:C_CHAN:123.456', 'json');
     assert.deepEqual(stored, { U_VOTER: 1 }, 'vote should update to option 1');
+  });
+});
+
+describe('selected poll workflows', () => {
+  test('post_results forwards the selected weekly slug to the workflow', async () => {
+    const fetchCalls = mockFetch({
+      '/actions/workflows/post_results.yml/dispatches': ['{}', 200],
+      'slack.com/api/chat.postEphemeral': [JSON.stringify({ ok: true })],
+      '/contents/polls/weekly.json': [ghPollBody({ name: 'Weekly Sports Poll', options: ['Soccer', 'Basketball'] })],
+    });
+
+    const env = makeEnv();
+    const payload = {
+      type: 'view_submission',
+      user: { id: 'U_USER' },
+      view: {
+        callback_id: 'post_results',
+        private_metadata: JSON.stringify({ channel_id: 'C_CHAN', user_id: 'U_USER' }),
+        state: {
+          values: {
+            poll_select: {
+              value: {
+                selected_option: {
+                  value: 'weekly',
+                  text: { type: 'plain_text', text: 'Weekly Sports Poll' },
+                },
+              },
+            },
+          },
+        },
+      },
+    };
+
+    const res = await worker.fetch(makeInteractionRequest(payload), env, env._ctx);
+    assert.equal(res.status, 200);
+    await env._ctx.flush();
+
+    const dispatchCall = fetchCalls.find(call => call.url.includes('/actions/workflows/post_results.yml/dispatches'));
+    assert.ok(dispatchCall, 'expected a post_results workflow dispatch');
+    const body = JSON.parse(dispatchCall.opts.body);
+    assert.equal(body.inputs.poll_name, 'weekly');
+    assert.equal(body.inputs.channel_id, 'C_CHAN');
+  });
+
+  test('editing the weekly poll is allowed for the admin', async () => {
+    mockFetch({
+      '/contents/polls/weekly.json': [ghPollBody({
+        name: 'Weekly Sports Poll',
+        options: ['Soccer', 'Basketball'],
+        emojis: ['soccer', 'basketball'],
+        preamble: 'What sporting event should we do this week???',
+      })],
+    });
+
+    const payload = {
+      type: 'view_submission',
+      user: { id: 'U_ADMIN' },
+      view: {
+        callback_id: 'select_poll_to_edit',
+        private_metadata: JSON.stringify({ channel_id: 'C_CHAN', user_id: 'U_ADMIN' }),
+        state: {
+          values: {
+            poll_select: {
+              value: {
+                selected_option: { value: 'weekly', text: { type: 'plain_text', text: 'Weekly Sports Poll' } },
+              },
+            },
+          },
+        },
+      },
+    };
+
+    const res = await worker.fetch(makeInteractionRequest(payload), makeEnv(), {});
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.response_action, 'push');
+    assert.equal(body.view.callback_id, 'edit_poll');
+    assert.match(body.view.blocks[0].elements[0].text, /Weekly Sports Poll/);
+  });
+
+  test('edit selector preselects previous-winner exclusion when enabled', async () => {
+    mockFetch({
+      '/contents/polls/weekly.json': [ghPollBody({
+        name: 'Weekly Sports Poll',
+        options: ['Soccer', 'Basketball'],
+        emojis: ['soccer', 'basketball'],
+        exclude_previous_winner: true,
+      })],
+    });
+
+    const payload = {
+      type: 'view_submission',
+      user: { id: 'U_ADMIN' },
+      view: {
+        callback_id: 'select_poll_to_edit',
+        private_metadata: JSON.stringify({ channel_id: 'C_CHAN', user_id: 'U_ADMIN' }),
+        state: {
+          values: {
+            poll_select: {
+              value: {
+                selected_option: { value: 'weekly', text: { type: 'plain_text', text: 'Weekly Sports Poll' } },
+              },
+            },
+          },
+        },
+      },
+    };
+
+    const res = await worker.fetch(makeInteractionRequest(payload), makeEnv(), {});
+    const body = await res.json();
+    const block = body.view.blocks.find(b => b.block_id === 'exclude_previous_winner');
+    assert.equal(block.element.initial_options[0].value, 'exclude');
+  });
+});
+
+describe('poll create and edit persistence', () => {
+  test('create_poll persists exclude_previous_winner when selected', async () => {
+    const fetchCalls = [];
+    globalThis.fetch = async (url, opts = {}) => {
+      fetchCalls.push({ url: url.toString(), opts });
+      const urlStr = url.toString();
+      if (urlStr.includes('/contents/polls/company-games.json') && (!opts.method || opts.method === 'GET')) {
+        return new Response('{}', { status: 404 });
+      }
+      if (urlStr.includes('/contents/polls/company-games.json') && opts.method === 'PUT') {
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+      if (urlStr.includes('chat.postEphemeral')) {
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+      return new Response('{}', { status: 200 });
+    };
+
+    const env = makeEnv({ ADMIN_USER_ID: 'U_ADMIN' });
+    const payload = {
+      type: 'view_submission',
+      user: { id: 'U_ADMIN' },
+      view: {
+        callback_id: 'create_poll',
+        private_metadata: JSON.stringify({ channel_id: 'C_CHAN', user_id: 'U_ADMIN' }),
+        state: {
+          values: {
+            poll_name: { value: { value: 'Company Games' } },
+            poll_preamble: { value: { value: 'Pick one' } },
+            poll_options: { value: { value: ':soccer: Soccer\n:basketball: Basketball' } },
+            poll_description: { value: { value: '' } },
+            voting_mode: { voting_mode_select: { selected_option: { value: 'reaction' } } },
+            exclude_previous_winner: { value: { selected_options: [{ value: 'exclude' }] } },
+          },
+        },
+      },
+    };
+
+    const res = await worker.fetch(makeInteractionRequest(payload), env, env._ctx);
+    assert.equal(res.status, 200);
+    await env._ctx.flush();
+
+    const putCall = fetchCalls.find(call => call.url.includes('/contents/polls/company-games.json') && call.opts?.method === 'PUT');
+    assert.ok(putCall, 'expected poll file to be created');
+    const pollData = decodeGitHubContent(putCall.opts.body);
+    assert.equal(pollData.exclude_previous_winner, true);
+  });
+
+  test('edit_poll persists exclude_previous_winner when selected', async () => {
+    const calls = [];
+    globalThis.fetch = async (url, opts = {}) => {
+      calls.push({ url: url.toString(), opts });
+      const urlStr = url.toString();
+      if (urlStr.includes('/contents/polls/weekly.json') && (!opts.method || opts.method === 'GET')) {
+        return new Response(JSON.stringify({
+          sha: 'abc123',
+          content: toBase64(JSON.stringify({
+            name: 'Weekly Sports Poll',
+            options: ['Soccer', 'Basketball'],
+            emojis: ['soccer', 'basketball'],
+          })),
+        }), { status: 200 });
+      }
+      if (urlStr.includes('/contents/polls/weekly.json') && opts.method === 'PUT') {
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+      if (urlStr.includes('chat.postEphemeral')) {
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+      return new Response('{}', { status: 200 });
+    };
+
+    const env = makeEnv({ ADMIN_USER_ID: 'U_ADMIN' });
+    const payload = {
+      type: 'view_submission',
+      user: { id: 'U_ADMIN' },
+      view: {
+        callback_id: 'edit_poll',
+        private_metadata: JSON.stringify({ slug: 'weekly', channel_id: 'C_CHAN' }),
+        state: {
+          values: {
+            poll_preamble: { value: { value: 'Pick one' } },
+            poll_options: { value: { value: ':soccer: Soccer\n:basketball: Basketball' } },
+            poll_description: { value: { value: '' } },
+            voting_mode: { edit_voting_mode_select: { selected_option: { value: 'reaction' } } },
+            exclude_previous_winner: { value: { selected_options: [{ value: 'exclude' }] } },
+          },
+        },
+      },
+    };
+
+    const res = await worker.fetch(makeInteractionRequest(payload), env, env._ctx);
+    assert.equal(res.status, 200);
+    await env._ctx.flush();
+
+    const putCall = calls.find(call => call.url.includes('/contents/polls/weekly.json') && call.opts?.method === 'PUT');
+    assert.ok(putCall, 'expected poll file update');
+    const body = JSON.parse(putCall.opts.body);
+    const pollData = JSON.parse(atob(body.content));
+    assert.equal(pollData.exclude_previous_winner, true);
   });
 });

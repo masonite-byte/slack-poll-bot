@@ -13,6 +13,17 @@ import (
 func main() {
 	_ = godotenv.Load()
 	client := slackclient.New()
+	if pollName := os.Getenv("POLL_NAME"); pollName != "" {
+		if err := runner.RunResultsForSlug(client, pollName); err != nil {
+			if errors.Is(err, runner.ErrNoPollFound) {
+				slog.Warn("no active poll found for slug, nothing to do", "poll_name", pollName)
+				os.Exit(0)
+			}
+			slog.Error("error computing results for poll", "poll_name", pollName, "error", err)
+			os.Exit(1)
+		}
+		return
+	}
 	_, isTie, err := runner.RunResults(client)
 	if err != nil {
 		if errors.Is(err, runner.ErrNoPollFound) {

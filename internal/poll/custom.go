@@ -57,17 +57,45 @@ func optionLine(emojiName, text string) string {
 
 // CustomPoll represents a user-created poll loaded from polls/<name>.json.
 type CustomPoll struct {
-	Name        string   `json:"name"`
-	Options     []string `json:"options"`
-	Emojis      []string `json:"emojis,omitempty"`      // parallel to Options; falls back to number emojis if absent
-	Preamble    string   `json:"preamble,omitempty"`    // optional text shown above the options
-	Description string   `json:"description,omitempty"` // optional text shown below the options
-	VotingMode  string   `json:"voting_mode,omitempty"` // "reaction" (default) or "button"
-	Anonymous   *bool    `json:"anonymous,omitempty"`   // nil/true = hide voters; false = show voters under each option
-	Schedule        string `json:"schedule,omitempty"`         // e.g. "monday 09:00" — used by schedule_polls workflow
-	ResultsSchedule string `json:"results_schedule,omitempty"` // e.g. "wednesday 17:00" — when to post results
-	ChannelID       string `json:"channel_id,omitempty"`       // Slack channel to post to on schedule; falls back to SLACK_CHANNEL_ID env
-	Slug        string   `json:"-"`                     // derived from filename, not stored in JSON
+	Name                  string   `json:"name"`
+	Options               []string `json:"options"`
+	Emojis                []string `json:"emojis,omitempty"`                  // parallel to Options; falls back to number emojis if absent
+	Preamble              string   `json:"preamble,omitempty"`                // optional text shown above the options
+	Description           string   `json:"description,omitempty"`             // optional text shown below the options
+	VotingMode            string   `json:"voting_mode,omitempty"`             // "reaction" (default) or "button"
+	Anonymous             *bool    `json:"anonymous,omitempty"`               // nil/true = hide voters; false = show voters under each option
+	ExcludePreviousWinner bool     `json:"exclude_previous_winner,omitempty"` // drop the prior posted winner for this poll slug
+	Schedule              string   `json:"schedule,omitempty"`                // e.g. "monday 09:00" — used by schedule_polls workflow
+	ResultsSchedule       string   `json:"results_schedule,omitempty"`        // e.g. "wednesday 17:00" — when to post results
+	ChannelID             string   `json:"channel_id,omitempty"`              // Slack channel to post to on schedule; falls back to SLACK_CHANNEL_ID env
+	Slug                  string   `json:"-"`                                 // derived from filename, not stored in JSON
+}
+
+// WithoutOption returns a shallow copy of the poll with the first matching option removed.
+// If the option is not present, it returns the original poll unchanged.
+func (p *CustomPoll) WithoutOption(excluded string) *CustomPoll {
+	if p == nil {
+		return nil
+	}
+	idx := -1
+	for i, opt := range p.Options {
+		if opt == excluded {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return p
+	}
+
+	cp := *p
+	cp.Options = append(append([]string(nil), p.Options[:idx]...), p.Options[idx+1:]...)
+	if len(p.Emojis) > idx {
+		cp.Emojis = append(append([]string(nil), p.Emojis[:idx]...), p.Emojis[idx+1:]...)
+	} else if len(p.Emojis) > 0 {
+		cp.Emojis = append([]string(nil), p.Emojis...)
+	}
+	return &cp
 }
 
 // LoadCustomPoll reads polls/<name>.json from disk.
@@ -91,7 +119,13 @@ func (p *CustomPoll) ToPollInstance() PollInstance {
 		text := fmt.Sprintf("@channel: 📊 *%s*\n\nClick a button to cast your vote.", p.Name)
 		return PollInstance{Text: text}
 	}
-	text := fmt.Sprintf("@channel: 📊 *%s*\n\nReact to vote:", p.Name)
+	preamble := p.Preamble
+	if preamble == "" {
+		preamble = "React with one of the options below:"
+	} else {
+		preamble += "\n\nReact with one of the options below:"
+	}
+	text := fmt.Sprintf("@channel: 📊 *%s*\n\n%s", p.Name, preamble)
 	emojis := make([]string, 0, len(p.Options))
 	for i, opt := range p.Options {
 		emoji := p.emojiAt(i)
@@ -210,6 +244,15 @@ func (p *CustomPoll) LabelMap() map[string]string {
 		m[p.emojiAt(i)] = opt
 	}
 	return m
+}
+
+// OptionsText returns the poll option list in Slack emoji shortcode format.
+func (p *CustomPoll) OptionsText() string {
+	lines := make([]string, 0, len(p.Options))
+	for i, option := range p.Options {
+		lines = append(lines, fmt.Sprintf(":%s: %s", p.emojiAt(i), option))
+	}
+	return strings.Join(lines, "\n")
 }
 
 func numberEmoji(i int) string {
