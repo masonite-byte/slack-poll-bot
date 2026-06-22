@@ -21,7 +21,7 @@
   "exclude_previous_winner": true,
   "channel_id": "C0BAL95D0U9",
   "voting_mode": "button",
-  "anonymous": true,
+  "anonymous": false,
   "schedule": "sunday 07:00",
   "results_schedule": "monday tuesday 12:00"
 }
