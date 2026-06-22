@@ -12,5 +12,6 @@
   "preamble": "This is a test of the schedule configurability",
   "voting_mode": "button",
   "channel_id": "C0BAL95D0U9",
-  "anonymous": true
+  "anonymous": true,
+  "exclude_previous_winner": true
 }
