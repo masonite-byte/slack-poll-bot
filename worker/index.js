@@ -767,6 +767,32 @@ function parseSchedule(str) {
   return { freq: '', days: [], time: '' };
 }
 
+function readEditScheduleState(values, prefix, freqOverride = null) {
+  const normalizedPrefix = `edit_${prefix}`;
+  const selectedFreq = freqOverride
+    ?? values?.[`${normalizedPrefix}_frequency`]?.[`${normalizedPrefix}_frequency_select`]?.selected_option?.value
+    ?? '';
+  const freq = selectedFreq === 'none' ? '' : selectedFreq;
+  if (!freq) return { freq: '', days: [], time: '' };
+
+  const time = values?.[`${normalizedPrefix}_time`]?.value?.selected_time || '';
+  if (freq === 'weekly') {
+    return {
+      freq,
+      days: (values?.[`${normalizedPrefix}_days_of_week`]?.value?.selected_options || []).map(o => o.value),
+      time,
+    };
+  }
+  if (freq === 'monthly') {
+    return {
+      freq,
+      days: (values?.[`${normalizedPrefix}_day_of_month`]?.value?.selected_options || []).map(o => o.value),
+      time,
+    };
+  }
+  return { freq, days: [], time };
+}
+
 // Like buildScheduleFieldBlocks but with a separate action_id namespace so edit
 // modal dispatch actions don't conflict with the create modal handlers.
 function buildEditScheduleFieldBlocks(prefix, labelText, freq, initialTime = '', initialDays = []) {
@@ -1397,10 +1423,8 @@ async function handleInteraction(request, env) {
       let viewMeta = {};
       try { viewMeta = JSON.parse(payload.view?.private_metadata || '{}'); } catch {}
       const v = payload.view?.state?.values || {};
-      const currentPostFreq = v.edit_schedule_frequency?.edit_schedule_frequency_select?.selected_option?.value || '';
-      const currentResultsFreq = v.edit_results_frequency?.edit_results_frequency_select?.selected_option?.value || '';
-      const postParsed = parseSchedule(currentPostFreq);
-      const resultsParsed = parseSchedule(currentResultsFreq);
+      const postParsed = readEditScheduleState(v, 'schedule');
+      const resultsParsed = readEditScheduleState(v, 'results');
       const work = async () => {
         await fetch('https://slack.com/api/views.update', {
           method: 'POST',
@@ -1418,16 +1442,16 @@ async function handleInteraction(request, env) {
       let viewMeta = {};
       try { viewMeta = JSON.parse(payload.view?.private_metadata || '{}'); } catch {}
       const v = payload.view?.state?.values || {};
-      const currentResultsFreq = v.edit_results_frequency?.edit_results_frequency_select?.selected_option?.value || '';
       const currentVotingMode = v.voting_mode?.edit_voting_mode_select?.selected_option?.value || 'reaction';
-      const resultsParsed = parseSchedule(currentResultsFreq);
+      const postParsed = readEditScheduleState(v, 'schedule', selectedPostFreq);
+      const resultsParsed = readEditScheduleState(v, 'results');
       const work = async () => {
         await fetch('https://slack.com/api/views.update', {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${env.SLACK_BOT_TOKEN}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
             view_id: viewId,
-            view: buildEditPollModal(viewMeta.slug || '', viewMeta.poll_name || '', {}, { freq: selectedPostFreq, days: [], time: '' }, resultsParsed, currentVotingMode),
+            view: buildEditPollModal(viewMeta.slug || '', viewMeta.poll_name || '', {}, postParsed, resultsParsed, currentVotingMode),
           }),
         });
       };
@@ -1438,16 +1462,16 @@ async function handleInteraction(request, env) {
       let viewMeta = {};
       try { viewMeta = JSON.parse(payload.view?.private_metadata || '{}'); } catch {}
       const v = payload.view?.state?.values || {};
-      const currentPostFreq = v.edit_schedule_frequency?.edit_schedule_frequency_select?.selected_option?.value || '';
       const currentVotingMode = v.voting_mode?.edit_voting_mode_select?.selected_option?.value || 'reaction';
-      const postParsed = parseSchedule(currentPostFreq);
+      const postParsed = readEditScheduleState(v, 'schedule');
+      const resultsParsed = readEditScheduleState(v, 'results', selectedResultsFreq);
       const work = async () => {
         await fetch('https://slack.com/api/views.update', {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${env.SLACK_BOT_TOKEN}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
             view_id: viewId,
-            view: buildEditPollModal(viewMeta.slug || '', viewMeta.poll_name || '', {}, postParsed, { freq: selectedResultsFreq, days: [], time: '' }, currentVotingMode),
+            view: buildEditPollModal(viewMeta.slug || '', viewMeta.poll_name || '', {}, postParsed, resultsParsed, currentVotingMode),
           }),
         });
       };

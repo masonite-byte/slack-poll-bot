@@ -551,4 +551,98 @@ describe('poll create and edit persistence', () => {
     const pollData = JSON.parse(atob(body.content));
     assert.equal(pollData.exclude_previous_winner, true);
   });
+
+  test('changing edit results schedule preserves the existing post schedule state', async () => {
+    const calls = [];
+    globalThis.fetch = async (url, opts = {}) => {
+      calls.push({ url: url.toString(), opts });
+      if (url.toString().includes('views.update')) {
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+      return new Response('{}', { status: 200 });
+    };
+
+    const env = makeEnv();
+    const payload = {
+      type: 'block_actions',
+      user: { id: 'U_ADMIN' },
+      actions: [{ action_id: 'edit_results_frequency_select', selected_option: { value: 'weekly' } }],
+      view: {
+        id: 'V_EDIT',
+        private_metadata: JSON.stringify({ slug: 'weekly', poll_name: 'Weekly Sports Poll' }),
+        state: {
+          values: {
+            voting_mode: { edit_voting_mode_select: { selected_option: { value: 'reaction' } } },
+            edit_schedule_frequency: { edit_schedule_frequency_select: { selected_option: { value: 'weekly' } } },
+            edit_schedule_days_of_week: { value: { selected_options: [{ value: 'monday', text: { type: 'plain_text', text: 'Monday' } }] } },
+            edit_schedule_time: { value: { selected_time: '09:00' } },
+            edit_results_frequency: { edit_results_frequency_select: { selected_option: { value: 'none' } } },
+          },
+        },
+      },
+    };
+
+    const res = await worker.fetch(makeInteractionRequest(payload), env, env._ctx);
+    assert.equal(res.status, 200);
+    await env._ctx.flush();
+
+    const updateCall = calls.find(call => call.url.includes('views.update'));
+    assert.ok(updateCall, 'expected edit modal update');
+    const updatedView = JSON.parse(updateCall.opts.body).view;
+    const postDaysBlock = updatedView.blocks.find(block => block.block_id === 'edit_schedule_days_of_week');
+    const postTimeBlock = updatedView.blocks.find(block => block.block_id === 'edit_schedule_time');
+    const resultsDaysBlock = updatedView.blocks.find(block => block.block_id === 'edit_results_days_of_week');
+    assert.ok(postDaysBlock, 'expected post schedule days block to remain visible');
+    assert.ok(postTimeBlock, 'expected post schedule time block to remain visible');
+    assert.ok(resultsDaysBlock, 'expected results schedule days block to appear');
+    assert.equal(postDaysBlock.element.initial_options[0].value, 'monday');
+    assert.equal(postTimeBlock.element.initial_time, '09:00');
+  });
+
+  test('changing edit post schedule preserves the existing results schedule state', async () => {
+    const calls = [];
+    globalThis.fetch = async (url, opts = {}) => {
+      calls.push({ url: url.toString(), opts });
+      if (url.toString().includes('views.update')) {
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+      return new Response('{}', { status: 200 });
+    };
+
+    const env = makeEnv();
+    const payload = {
+      type: 'block_actions',
+      user: { id: 'U_ADMIN' },
+      actions: [{ action_id: 'edit_schedule_frequency_select', selected_option: { value: 'weekly' } }],
+      view: {
+        id: 'V_EDIT',
+        private_metadata: JSON.stringify({ slug: 'weekly', poll_name: 'Weekly Sports Poll' }),
+        state: {
+          values: {
+            voting_mode: { edit_voting_mode_select: { selected_option: { value: 'reaction' } } },
+            edit_schedule_frequency: { edit_schedule_frequency_select: { selected_option: { value: 'none' } } },
+            edit_results_frequency: { edit_results_frequency_select: { selected_option: { value: 'weekly' } } },
+            edit_results_days_of_week: { value: { selected_options: [{ value: 'friday', text: { type: 'plain_text', text: 'Friday' } }] } },
+            edit_results_time: { value: { selected_time: '17:00' } },
+          },
+        },
+      },
+    };
+
+    const res = await worker.fetch(makeInteractionRequest(payload), env, env._ctx);
+    assert.equal(res.status, 200);
+    await env._ctx.flush();
+
+    const updateCall = calls.find(call => call.url.includes('views.update'));
+    assert.ok(updateCall, 'expected edit modal update');
+    const updatedView = JSON.parse(updateCall.opts.body).view;
+    const postDaysBlock = updatedView.blocks.find(block => block.block_id === 'edit_schedule_days_of_week');
+    const resultsDaysBlock = updatedView.blocks.find(block => block.block_id === 'edit_results_days_of_week');
+    const resultsTimeBlock = updatedView.blocks.find(block => block.block_id === 'edit_results_time');
+    assert.ok(postDaysBlock, 'expected post schedule days block to appear');
+    assert.ok(resultsDaysBlock, 'expected results schedule days block to remain visible');
+    assert.ok(resultsTimeBlock, 'expected results schedule time block to remain visible');
+    assert.equal(resultsDaysBlock.element.initial_options[0].value, 'friday');
+    assert.equal(resultsTimeBlock.element.initial_time, '17:00');
+  });
 });
