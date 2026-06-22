@@ -553,7 +553,9 @@ function monthDayOrdinal(d) {
 
 // buildScheduleFieldBlocks returns the input blocks for one schedule group.
 // prefix: 'schedule' (post) or 'results'. freq: '' | 'daily' | 'weekly' | 'monthly'
-function buildScheduleFieldBlocks(prefix, labelText, freq) {
+// initialTime/initialDays: previously-selected values to restore on rebuild.
+function buildScheduleFieldBlocks(prefix, labelText, freq, initialTime = '', initialDays = []) {
+  const weekdayLabels = { monday: 'Monday', tuesday: 'Tuesday', wednesday: 'Wednesday', thursday: 'Thursday', friday: 'Friday', saturday: 'Saturday', sunday: 'Sunday' };
   const blocks = [
     {
       type: 'input',
@@ -565,6 +567,7 @@ function buildScheduleFieldBlocks(prefix, labelText, freq) {
         type: 'static_select',
         action_id: `${prefix}_frequency_select`,
         placeholder: { type: 'plain_text', text: 'No recurring schedule' },
+        ...(freq ? { initial_option: { text: { type: 'plain_text', text: freq.charAt(0).toUpperCase() + freq.slice(1) }, value: freq } } : {}),
         options: [
           { text: { type: 'plain_text', text: 'Daily' }, value: 'daily' },
           { text: { type: 'plain_text', text: 'Weekly' }, value: 'weekly' },
@@ -575,6 +578,8 @@ function buildScheduleFieldBlocks(prefix, labelText, freq) {
   ];
 
   if (freq === 'weekly') {
+    const validDays = initialDays.filter(d => weekdayLabels[d]);
+    const restoredOptions = validDays.map(d => ({ text: { type: 'plain_text', text: weekdayLabels[d] }, value: d }));
     blocks.push({
       type: 'input',
       block_id: `${prefix}_days_of_week`,
@@ -593,7 +598,9 @@ function buildScheduleFieldBlocks(prefix, labelText, freq) {
           { text: { type: 'plain_text', text: 'Saturday' }, value: 'saturday' },
           { text: { type: 'plain_text', text: 'Sunday' }, value: 'sunday' },
         ],
-        initial_options: [{ text: { type: 'plain_text', text: 'Monday' }, value: 'monday' }],
+        initial_options: restoredOptions.length > 0
+          ? restoredOptions
+          : [{ text: { type: 'plain_text', text: 'Monday' }, value: 'monday' }],
       },
     });
   }
@@ -603,6 +610,8 @@ function buildScheduleFieldBlocks(prefix, labelText, freq) {
     for (let d = 1; d <= 28; d++) {
       dayOptions.push({ text: { type: 'plain_text', text: monthDayOrdinal(d) }, value: String(d) });
     }
+    const validMonthDays = initialDays.filter(d => Number(d) >= 1 && Number(d) <= 28);
+    const restoredMonthOptions = validMonthDays.map(d => ({ text: { type: 'plain_text', text: monthDayOrdinal(Number(d)) }, value: String(d) }));
     blocks.push({
       type: 'input',
       block_id: `${prefix}_day_of_month`,
@@ -614,7 +623,9 @@ function buildScheduleFieldBlocks(prefix, labelText, freq) {
         action_id: 'value',
         placeholder: { type: 'plain_text', text: 'Select days' },
         options: dayOptions,
-        initial_options: [{ text: { type: 'plain_text', text: monthDayOrdinal(1) }, value: '1' }],
+        initial_options: restoredMonthOptions.length > 0
+          ? restoredMonthOptions
+          : [{ text: { type: 'plain_text', text: monthDayOrdinal(1) }, value: '1' }],
       },
     });
   }
@@ -630,7 +641,7 @@ function buildScheduleFieldBlocks(prefix, labelText, freq) {
         type: 'timepicker',
         action_id: 'value',
         placeholder: { type: 'plain_text', text: 'Select time' },
-        initial_time: '09:00',
+        initial_time: initialTime || '09:00',
       },
     });
   }
@@ -638,7 +649,8 @@ function buildScheduleFieldBlocks(prefix, labelText, freq) {
   return blocks;
 }
 
-function buildCreatePollModal(channelId, userId, postFreq, resultsFreq, votingMode = '') {
+// postState/resultsState: { freq, days, time } objects to restore schedule UI on dispatch rebuild.
+function buildCreatePollModal(channelId, userId, postFreq, resultsFreq, votingMode = '', postState = {}, resultsState = {}) {
   return {
     type: 'modal',
     callback_id: 'create_poll',
@@ -742,8 +754,8 @@ function buildCreatePollModal(channelId, userId, postFreq, resultsFreq, votingMo
           }],
         },
       },
-      ...buildScheduleFieldBlocks('schedule', 'Post Schedule', postFreq),
-      ...buildScheduleFieldBlocks('results', 'Results Schedule', resultsFreq),
+      ...buildScheduleFieldBlocks('schedule', 'Post Schedule', postFreq, postState.time, postState.days),
+      ...buildScheduleFieldBlocks('results', 'Results Schedule', resultsFreq, resultsState.time, resultsState.days),
     ],
   };
 }
@@ -787,6 +799,31 @@ function readEditScheduleState(values, prefix, freqOverride = null) {
     return {
       freq,
       days: (values?.[`${normalizedPrefix}_day_of_month`]?.value?.selected_options || []).map(o => o.value),
+      time,
+    };
+  }
+  return { freq, days: [], time };
+}
+
+function readCreateScheduleState(values, prefix, freqOverride = null) {
+  const selectedFreq = freqOverride
+    ?? values?.[`${prefix}_frequency`]?.[`${prefix}_frequency_select`]?.selected_option?.value
+    ?? '';
+  const freq = selectedFreq === 'none' ? '' : selectedFreq;
+  if (!freq) return { freq: '', days: [], time: '' };
+
+  const time = values?.[`${prefix}_time`]?.value?.selected_time || '';
+  if (freq === 'weekly') {
+    return {
+      freq,
+      days: (values?.[`${prefix}_days_of_week`]?.value?.selected_options || []).map(o => o.value),
+      time,
+    };
+  }
+  if (freq === 'monthly') {
+    return {
+      freq,
+      days: (values?.[`${prefix}_day_of_month`]?.value?.selected_options || []).map(o => o.value),
       time,
     };
   }
@@ -1365,8 +1402,9 @@ async function handleInteraction(request, env) {
       if (typeof env._ctx?.waitUntil === 'function') env._ctx.waitUntil(work());
     } else if (action?.action_id === 'voting_mode_select') {
       const selectedVotingMode = action.selected_option?.value || '';
-      const currentPostFreq = payload.view?.state?.values?.schedule_frequency?.schedule_frequency_select?.selected_option?.value || '';
-      const currentResultsFreq = payload.view?.state?.values?.results_frequency?.results_frequency_select?.selected_option?.value || '';
+      const v = payload.view?.state?.values || {};
+      const postParsed = readCreateScheduleState(v, 'schedule');
+      const resultsParsed = readCreateScheduleState(v, 'results');
       const viewId = payload.view?.id;
       let viewMeta = {};
       try { viewMeta = JSON.parse(payload.view?.private_metadata || '{}'); } catch {}
@@ -1376,15 +1414,17 @@ async function handleInteraction(request, env) {
           headers: { 'Authorization': `Bearer ${env.SLACK_BOT_TOKEN}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
             view_id: viewId,
-            view: buildCreatePollModal(viewMeta.channel_id || '', viewMeta.user_id || '', currentPostFreq, currentResultsFreq, selectedVotingMode),
+            view: buildCreatePollModal(viewMeta.channel_id || '', viewMeta.user_id || '', postParsed.freq, resultsParsed.freq, selectedVotingMode, postParsed, resultsParsed),
           }),
         });
       };
       if (typeof env._ctx?.waitUntil === 'function') env._ctx.waitUntil(work());
     } else if (action?.action_id === 'schedule_frequency_select') {
       const selectedFreq = action.selected_option?.value || '';
-      const currentResultsFreq = payload.view?.state?.values?.results_frequency?.results_frequency_select?.selected_option?.value || '';
-      const currentVotingMode = payload.view?.state?.values?.voting_mode?.voting_mode_select?.selected_option?.value || '';
+      const v = payload.view?.state?.values || {};
+      const postParsed = readCreateScheduleState(v, 'schedule', selectedFreq);
+      const resultsParsed = readCreateScheduleState(v, 'results');
+      const currentVotingMode = v?.voting_mode?.voting_mode_select?.selected_option?.value || '';
       const viewId = payload.view?.id;
       let viewMeta = {};
       try { viewMeta = JSON.parse(payload.view?.private_metadata || '{}'); } catch {}
@@ -1394,15 +1434,17 @@ async function handleInteraction(request, env) {
           headers: { 'Authorization': `Bearer ${env.SLACK_BOT_TOKEN}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
             view_id: viewId,
-            view: buildCreatePollModal(viewMeta.channel_id || '', viewMeta.user_id || '', selectedFreq, currentResultsFreq, currentVotingMode),
+            view: buildCreatePollModal(viewMeta.channel_id || '', viewMeta.user_id || '', postParsed.freq, resultsParsed.freq, currentVotingMode, postParsed, resultsParsed),
           }),
         });
       };
       if (typeof env._ctx?.waitUntil === 'function') env._ctx.waitUntil(work());
     } else if (action?.action_id === 'results_frequency_select') {
       const selectedResultsFreq = action.selected_option?.value || '';
-      const currentPostFreq = payload.view?.state?.values?.schedule_frequency?.schedule_frequency_select?.selected_option?.value || '';
-      const currentVotingMode = payload.view?.state?.values?.voting_mode?.voting_mode_select?.selected_option?.value || '';
+      const v = payload.view?.state?.values || {};
+      const postParsed = readCreateScheduleState(v, 'schedule');
+      const resultsParsed = readCreateScheduleState(v, 'results', selectedResultsFreq);
+      const currentVotingMode = v?.voting_mode?.voting_mode_select?.selected_option?.value || '';
       const viewId = payload.view?.id;
       let viewMeta = {};
       try { viewMeta = JSON.parse(payload.view?.private_metadata || '{}'); } catch {}
@@ -1412,7 +1454,7 @@ async function handleInteraction(request, env) {
           headers: { 'Authorization': `Bearer ${env.SLACK_BOT_TOKEN}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
             view_id: viewId,
-            view: buildCreatePollModal(viewMeta.channel_id || '', viewMeta.user_id || '', currentPostFreq, selectedResultsFreq, currentVotingMode),
+            view: buildCreatePollModal(viewMeta.channel_id || '', viewMeta.user_id || '', postParsed.freq, resultsParsed.freq, currentVotingMode, postParsed, resultsParsed),
           }),
         });
       };

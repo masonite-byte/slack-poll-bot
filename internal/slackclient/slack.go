@@ -233,9 +233,16 @@ func (c *Client) FindPreviousWinner(slug string) (string, error) {
 			if resultsMarkerSlug(msg) != slug {
 				continue
 			}
-			if winner := parseTopEvent(msg.Text); winner != "" {
+			// Try blocks first — more reliable than fallback text for Block Kit messages.
+			winner := parseTopEventFromBlocks(msg)
+			if winner == "" {
+				winner = parseTopEvent(msg.Text)
+			}
+			if winner != "" {
+				slog.Info("previous winner found", "slug", slug, "winner", winner)
 				return winner, nil
 			}
+			slog.Info("results marker found but no winner could be parsed", "slug", slug)
 			return "", nil
 		}
 
@@ -246,6 +253,34 @@ func (c *Client) FindPreviousWinner(slug string) (string, error) {
 	}
 
 	return "", nil
+}
+
+// parseTopEventFromBlocks scans section blocks in a results message for the winner line.
+func parseTopEventFromBlocks(msg slack.Message) string {
+	if msg.Blocks.BlockSet == nil {
+		return ""
+	}
+	for _, block := range msg.Blocks.BlockSet {
+		var text string
+		switch b := block.(type) {
+		case *slack.SectionBlock:
+			if b.Text != nil {
+				text = b.Text.Text
+			}
+		case slack.SectionBlock:
+			if b.Text != nil {
+				text = b.Text.Text
+			}
+		default:
+			continue
+		}
+		// Results summary block uses "@channel: Top event: X." format.
+		text = strings.TrimPrefix(text, "@channel: ")
+		if winner := parseTopEvent(text); winner != "" {
+			return winner
+		}
+	}
+	return ""
 }
 
 func containsPollMarker(msg slack.Message) bool {

@@ -8,7 +8,7 @@ import (
 )
 
 func TestBuildPollBlocksIncludesMarkerAndOptions(t *testing.T) {
-	blocks := BuildPollBlocks("Test Poll", "Vote now:", "testmarker", []string{"Option A", "Option B"})
+	blocks := BuildPollBlocks("Test Poll", "Vote now:", "testmarker", []string{"Option A", "Option B"}, nil)
 	if len(blocks) != 5 {
 		t.Fatalf("expected 5 blocks, got %d", len(blocks))
 	}
@@ -32,7 +32,7 @@ func TestBuildPollBlocksIncludesMarkerAndOptions(t *testing.T) {
 
 func TestRunoffPollBlocksPreservesTieOptions(t *testing.T) {
 	options := []string{"Option A", "Option B"}
-	blocks := RunoffPollBlocks(options)
+	blocks := RunoffPollBlocks(options, nil)
 	if len(blocks) != 5 {
 		t.Fatalf("expected 5 blocks, got %d", len(blocks))
 	}
@@ -47,14 +47,22 @@ func TestRunoffPollBlocksPreservesTieOptions(t *testing.T) {
 }
 
 func TestGetRunoffPollUsesSportsEmojiMapWhenAvailable(t *testing.T) {
-	instance := GetRunoffPoll([]string{"Soccer", "Basketball"})
+	instance := GetRunoffPoll([]string{"Soccer", "Basketball"}, nil)
 	if !strings.Contains(instance.Text, ":soccer: Soccer") || !strings.Contains(instance.Text, ":basketball: Basketball") {
 		t.Fatalf("expected sports emoji shortcodes in runoff text, got %q", instance.Text)
 	}
 }
 
+func TestGetRunoffPollUsesProvidedEmojiMap(t *testing.T) {
+	emojiMap := map[string]string{"Swimming": "swimmer", "Cycling": "bicyclist"}
+	instance := GetRunoffPoll([]string{"Swimming", "Cycling"}, emojiMap)
+	if !strings.Contains(instance.Text, ":swimmer: Swimming") || !strings.Contains(instance.Text, ":bicyclist: Cycling") {
+		t.Fatalf("expected custom emoji map to be used, got %q", instance.Text)
+	}
+}
+
 func TestGetRunoffPollFallsBackToSlugifiedEmojiName(t *testing.T) {
-	instance := GetRunoffPoll([]string{"Team Relay"})
+	instance := GetRunoffPoll([]string{"Team Relay"}, nil)
 	if len(instance.Emojis) != 1 || instance.Emojis[0] != "team_relay" {
 		t.Fatalf("expected slugified fallback emoji name, got %v", instance.Emojis)
 	}
