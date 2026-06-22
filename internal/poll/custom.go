@@ -246,6 +246,15 @@ func (p *CustomPoll) LabelMap() map[string]string {
 	return m
 }
 
+// EmojiMap returns a map of option label → emoji name for building runoff polls.
+func (p *CustomPoll) EmojiMap() map[string]string {
+	m := make(map[string]string, len(p.Options))
+	for i, opt := range p.Options {
+		m[opt] = p.emojiAt(i)
+	}
+	return m
+}
+
 // OptionsText returns the poll option list in Slack emoji shortcode format.
 func (p *CustomPoll) OptionsText() string {
 	lines := make([]string, 0, len(p.Options))

@@ -7,6 +7,7 @@ import (
 
 type MockAPI struct {
 	Posted               string
+	PostedBlocks         []slack.Block
 	Ts                   string
 	PollSlug             string
 	Reactions            []slackclient.Reaction
@@ -24,6 +25,7 @@ func (m *MockAPI) PostMessage(text string) (string, string, error) {
 }
 func (m *MockAPI) PostBlocks(text string, blocks ...slack.Block) (string, string, error) {
 	m.Posted = text
+	m.PostedBlocks = blocks
 	return "C", m.Ts, nil
 }
 func (m *MockAPI) AddReaction(name, timestamp string) error {

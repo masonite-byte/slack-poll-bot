@@ -32,6 +32,10 @@ func chdirToRepoRoot(t *testing.T) {
 
 func TestRunPostPollSeedsReactions(t *testing.T) {
 	chdirToRepoRoot(t)
+	weeklyPoll, err := poll.LoadCustomPoll("weekly")
+	if err != nil {
+		t.Fatalf("load weekly poll: %v", err)
+	}
 	m := &testutil.MockAPI{Ts: "123"}
 	if err := RunPostPoll(m); err != nil {
 		t.Fatalf("RunPostPoll error: %v", err)
@@ -39,20 +43,43 @@ func TestRunPostPollSeedsReactions(t *testing.T) {
 	if m.Posted == "" {
 		t.Fatalf("expected post to be sent")
 	}
-	if len(m.Added) != 6 {
-		t.Fatalf("expected 6 seeded reactions, got %d", len(m.Added))
+	// Button-based polls seed no reactions; reaction-based polls seed one per option.
+	expected := len(weeklyPoll.Options)
+	if weeklyPoll.VotingMode == "button" {
+		expected = 0
+	}
+	if len(m.Added) != expected {
+		t.Fatalf("expected %d seeded reactions (voting_mode=%q), got %d", expected, weeklyPoll.VotingMode, len(m.Added))
 	}
 }
 
 func TestRunPostPollExcludesPreviousWinnerFromStoredWeeklyPoll(t *testing.T) {
 	chdirToRepoRoot(t)
+	weeklyPoll, err := poll.LoadCustomPoll("weekly")
+	if err != nil {
+		t.Fatalf("load weekly poll: %v", err)
+	}
 	m := &testutil.MockAPI{Ts: "123", PreviousWinnerBySlug: map[string]string{"weekly": "Soccer"}}
 	if err := RunPostPoll(m); err != nil {
 		t.Fatalf("RunPostPoll error: %v", err)
 	}
-	for _, reaction := range m.Added {
-		if reaction == "soccer" {
-			t.Fatalf("expected previous winner reaction to be excluded, got %v", m.Added)
+	if weeklyPoll.VotingMode == "button" {
+		// For button polls, verify Soccer's option block was not included in the posted blocks.
+		for _, block := range m.PostedBlocks {
+			section, ok := block.(*slack.SectionBlock)
+			if !ok || section.Accessory == nil {
+				continue
+			}
+			if section.Text != nil && strings.Contains(section.Text.Text, "Soccer") {
+				t.Fatalf("expected Soccer to be excluded from button poll blocks")
+			}
+		}
+	} else {
+		// For reaction polls, verify Soccer's reaction was not seeded.
+		for _, reaction := range m.Added {
+			if reaction == "soccer" {
+				t.Fatalf("expected previous winner reaction to be excluded, got %v", m.Added)
+			}
 		}
 	}
 }

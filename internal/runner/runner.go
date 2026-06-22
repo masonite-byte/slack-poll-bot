@@ -262,7 +262,7 @@ func runoffPollForSlug(api slackclient.API, timestamp, slug string) (string, err
 		return "", err
 	}
 
-	return postRunoffPoll(api, winning)
+	return postRunoffPoll(api, winning, pollEmojiMapForSlug(slug))
 }
 
 // NotifyVoters DMs each voter once with a randomly chosen winner or loser message.
@@ -399,7 +399,7 @@ func RunResultsForSlug(api slackclient.API, slug string) error {
 	}
 
 	if isTie {
-		if _, err := postRunoffPollAfterDelete(api, timestamp, winning); err != nil {
+		if _, err := postRunoffPollAfterDelete(api, timestamp, winning, pollEmojiMapForSlug(slug)); err != nil {
 			slog.Warn("failed to post runoff after tie", "slug", slug, "error", err)
 		}
 		return nil
@@ -576,6 +576,18 @@ func buildLabelMap(slug string) map[string]string {
 	return cp.LabelMap()
 }
 
+// pollEmojiMapForSlug loads the option→emoji map from the poll's JSON for runoff building.
+func pollEmojiMapForSlug(slug string) map[string]string {
+	if slug == "" || slug == "runoff" {
+		return nil
+	}
+	cp, err := poll.LoadCustomPoll(slug)
+	if err != nil {
+		return nil
+	}
+	return cp.EmojiMap()
+}
+
 // resolveLabel looks up an emoji name in the custom label map first, then falls back to poll.ReactionLabels.
 func resolveLabel(emojiName string, labels map[string]string) string {
 	if labels != nil {
@@ -589,9 +601,9 @@ func resolveLabel(emojiName string, labels map[string]string) string {
 	return emojiName
 }
 
-func postRunoffPoll(api slackclient.API, winning []string) (string, error) {
-	instance := poll.GetRunoffPoll(winning)
-	blocks := poll.RunoffPollBlocks(winning)
+func postRunoffPoll(api slackclient.API, winning []string, emojiMap map[string]string) (string, error) {
+	instance := poll.GetRunoffPoll(winning, emojiMap)
+	blocks := poll.RunoffPollBlocks(winning, emojiMap)
 	_, timestamp, err := api.PostBlocks(instance.Text, blocks...)
 	if err != nil {
 		return "", err
@@ -604,11 +616,11 @@ func postRunoffPoll(api slackclient.API, winning []string) (string, error) {
 	return fmt.Sprintf("Runoff poll posted with tied options: %s.", strings.Join(winning, ", ")), nil
 }
 
-func postRunoffPollAfterDelete(api slackclient.API, timestamp string, winning []string) (string, error) {
+func postRunoffPollAfterDelete(api slackclient.API, timestamp string, winning []string, emojiMap map[string]string) (string, error) {
 	if err := api.DeleteMessage(api.ChannelID(), timestamp); err != nil {
 		return "", err
 	}
-	return postRunoffPoll(api, winning)
+	return postRunoffPoll(api, winning, emojiMap)
 }
 
 func tallyResults(reactions []slackclient.Reaction, botID string, labels map[string]string) []pollResult {
