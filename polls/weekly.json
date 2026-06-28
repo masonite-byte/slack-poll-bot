@@ -20,8 +20,7 @@
   "preamble": "What sporting event should we do this week???",
   "exclude_previous_winner": true,
   "channel_id": "C0BAL95D0U9",
-  "voting_mode": "button",
-  "anonymous": false,
+  "voting_mode": "reaction",
   "schedule": "sunday 07:00",
-  "results_schedule": "monday tuesday 12:00"
+  "results_schedule": "tuesday 12:00"
 }
