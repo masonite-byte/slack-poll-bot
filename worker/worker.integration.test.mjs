@@ -256,11 +256,41 @@ describe('slash commands', () => {
     const postBody = JSON.parse(postCall.opts.body);
     assert.equal(postBody.channel, 'C_CHAN');
     assert.equal(postBody.text, 'hello from bot');
+    assert.equal(postBody.thread_ts, undefined);
 
     const ephemeralCall = fetchCalls.find(call => call.url.toString().includes('chat.postEphemeral'));
     assert.ok(ephemeralCall);
     const ephemeralBody = JSON.parse(ephemeralCall.opts.body);
     assert.equal(ephemeralBody.text, '✅ Message posted as the bot.');
+  });
+
+  test('/say replies in-thread when invoked from a thread', async () => {
+    const fetchCalls = mockFetch({
+      'slack.com/api/chat.postMessage': [JSON.stringify({ ok: true })],
+      'slack.com/api/chat.postEphemeral': [JSON.stringify({ ok: true })],
+    });
+    const env = makeEnv();
+
+    const res = await worker.fetch(
+      makeSlashRequest('/say', {
+        user_id: 'U_ADMIN',
+        text: 'thread reply',
+        thread_ts: '1720000000.123456',
+      }),
+      env,
+      env._ctx,
+    );
+    assert.equal(res.status, 200);
+    assert.equal(await res.text(), '');
+
+    await env._ctx.flush();
+
+    const postCall = fetchCalls.find(call => call.url.toString().includes('chat.postMessage'));
+    assert.ok(postCall);
+    const postBody = JSON.parse(postCall.opts.body);
+    assert.equal(postBody.channel, 'C_CHAN');
+    assert.equal(postBody.text, 'thread reply');
+    assert.equal(postBody.thread_ts, '1720000000.123456');
   });
 
   test('/say rejects non-admin users', async () => {

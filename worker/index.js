@@ -1445,14 +1445,17 @@ function adminUserId(env) {
   return env.ADMIN_USER_ID || env.SLACK_ADMIN_USER_ID || '';
 }
 
-async function postMessage(channelId, text, env) {
+async function postMessage(channelId, text, env, threadTs = '') {
+  const payload = { channel: channelId, text };
+  if (threadTs) payload.thread_ts = threadTs;
+
   const resp = await fetch('https://slack.com/api/chat.postMessage', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${env.SLACK_BOT_TOKEN}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ channel: channelId, text }),
+    body: JSON.stringify(payload),
   });
   const data = await resp.json();
   if (!data.ok) throw new Error(`chat.postMessage failed: ${data.error}`);
@@ -2117,6 +2120,7 @@ async function handleSlashCommand(request, env) {
   const channelId = params.get('channel_id') || '';
   const userId = params.get('user_id') || '';
   const triggerId = params.get('trigger_id') || '';
+  const threadTs = params.get('thread_ts') || '';
   const text = (params.get('text') || '').trim();
 
   switch (command) {
@@ -2227,7 +2231,7 @@ async function handleSlashCommand(request, env) {
 
       const sayWork = async () => {
         try {
-          await postMessage(channelId, text, env);
+          await postMessage(channelId, text, env, threadTs);
           await postEphemeral(channelId, userId, '✅ Message posted as the bot.', env);
         } catch (e) {
           console.error('say command error:', e);
