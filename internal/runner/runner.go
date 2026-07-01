@@ -486,6 +486,7 @@ func BuildHelpText() string {
 		"/runoff    - start a runoff poll when tied.",
 		"/notify    - DM voters with their results.",
 		"/delete    - delete the most recent poll.",
+		"/say       - post a message as the bot (admin only).",
 		"/create    - create a custom poll (coming soon).",
 		"/schedule  - show the weekly poll schedule.",
 		"/options   - list poll options and emoji.",

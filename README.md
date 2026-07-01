@@ -21,6 +21,7 @@ Automated stateless Slack poll system using Go + GitHub Actions.
    - `SLACK_BOT_TOKEN` (bot token, e.g. `xoxb-...`)
    - `SLACK_CHANNEL_ID` (channel ID where polls are posted)
    - `SLACK_SIGNING_SECRET` (for verifying slash command requests)
+   - `SLACK_ADMIN_USER_ID` (your Slack user ID for admin-only slash commands like `/say`)
 
 ## Local Execution
 
@@ -51,10 +52,11 @@ go run ./cmd/server
 2. Use `SLACK_SIGNING_SECRET` from your Slack app to validate requests.
 3. The bot supports these commands:
    - `/results` - show the current poll results.
-   - `/recount` - rerun the current poll tally.
-   - `/pollstatus` - show the current poll status and counts.
    - `/newpoll` - post a new poll message.
    - `/runoff` - start a runoff poll when the latest poll is tied.
+   - `/notify` - DM voters with their results.
+   - `/delete` - delete the most recent poll.
+   - `/say <message>` - post a plain-text message into the configured channel as the bot (admin only).
    - `/options` - list poll options and emoji.
    - `/vote` - show voting instructions.
    - `/help` - show this help text.

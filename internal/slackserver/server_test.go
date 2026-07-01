@@ -96,6 +96,9 @@ func TestSlashCommandHelpResponse(t *testing.T) {
 	if !strings.Contains(payload["text"], "Supported slash commands") {
 		t.Fatalf("unexpected help response text: %q", payload["text"])
 	}
+	if !strings.Contains(payload["text"], "/say") {
+		t.Fatalf("expected help response to include /say, got %q", payload["text"])
+	}
 }
 
 func TestSlashCommandOptionsResponse(t *testing.T) {
@@ -207,6 +210,111 @@ func TestSlashCommandUnsupportedResponse(t *testing.T) {
 
 	if !strings.Contains(payload["text"], "Unsupported slash command") {
 		t.Fatalf("unexpected unsupported command response text: %q", payload["text"])
+	}
+}
+
+func TestSlashCommandSayResponse(t *testing.T) {
+	t.Setenv("SLACK_ADMIN_USER_ID", "UADMIN")
+
+	api := &testutil.MockAPI{}
+	server := New(api, "test-secret")
+
+	form := url.Values{}
+	form.Set("command", "/say")
+	form.Set("text", "Hello from the bot")
+	form.Set("user_id", "UADMIN")
+
+	req := httptest.NewRequest(http.MethodPost, "/slack/commands", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	addSlackSignature(t, req, "test-secret")
+
+	rr := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 response, got %d", rr.Code)
+	}
+
+	var payload map[string]string
+	if err := json.NewDecoder(rr.Body).Decode(&payload); err != nil {
+		t.Fatalf("failed to decode response JSON: %v", err)
+	}
+
+	if payload["text"] != "Message posted as bot." {
+		t.Fatalf("unexpected /say response text: %q", payload["text"])
+	}
+	if api.Posted != "Hello from the bot" {
+		t.Fatalf("expected posted bot message, got %q", api.Posted)
+	}
+}
+
+func TestSlashCommandSayRequiresAdmin(t *testing.T) {
+	t.Setenv("SLACK_ADMIN_USER_ID", "UADMIN")
+
+	api := &testutil.MockAPI{}
+	server := New(api, "test-secret")
+
+	form := url.Values{}
+	form.Set("command", "/say")
+	form.Set("text", "Hello from the bot")
+	form.Set("user_id", "UNAUTHORIZED")
+
+	req := httptest.NewRequest(http.MethodPost, "/slack/commands", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	addSlackSignature(t, req, "test-secret")
+
+	rr := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 response, got %d", rr.Code)
+	}
+
+	var payload map[string]string
+	if err := json.NewDecoder(rr.Body).Decode(&payload); err != nil {
+		t.Fatalf("failed to decode response JSON: %v", err)
+	}
+
+	if payload["text"] != "Error: Only the configured admin can use /say." {
+		t.Fatalf("unexpected /say auth response text: %q", payload["text"])
+	}
+	if api.Posted != "" {
+		t.Fatalf("expected no posted bot message, got %q", api.Posted)
+	}
+}
+
+func TestSlashCommandSayRequiresText(t *testing.T) {
+	t.Setenv("SLACK_ADMIN_USER_ID", "UADMIN")
+
+	api := &testutil.MockAPI{}
+	server := New(api, "test-secret")
+
+	form := url.Values{}
+	form.Set("command", "/say")
+	form.Set("text", "   ")
+	form.Set("user_id", "UADMIN")
+
+	req := httptest.NewRequest(http.MethodPost, "/slack/commands", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	addSlackSignature(t, req, "test-secret")
+
+	rr := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 response, got %d", rr.Code)
+	}
+
+	var payload map[string]string
+	if err := json.NewDecoder(rr.Body).Decode(&payload); err != nil {
+		t.Fatalf("failed to decode response JSON: %v", err)
+	}
+
+	if payload["text"] != "Error: Usage: /say your message here" {
+		t.Fatalf("unexpected /say usage response text: %q", payload["text"])
+	}
+	if api.Posted != "" {
+		t.Fatalf("expected no posted bot message, got %q", api.Posted)
 	}
 }
 
