@@ -204,13 +204,13 @@ describe('buildButtonPollBlocks', () => {
 
   test('block count: header + prompt + options + marker (no description)', () => {
     const blocks = buildButtonPollBlocks(poll, {}, 'summer-sports');
-    assert.equal(blocks.length, 6);
+    assert.equal(blocks.length, 7);
   });
 
   test('block count includes description block when present', () => {
     const withDesc = { ...poll, description: 'Vote for your favorite.' };
     const blocks = buildButtonPollBlocks(withDesc, {}, 'summer-sports');
-    assert.equal(blocks.length, 7);
+    assert.equal(blocks.length, 8);
   });
 
   test('header block contains poll name', () => {
@@ -268,6 +268,14 @@ describe('buildButtonPollBlocks', () => {
     const marker = blocks[blocks.length - 1];
     assert.equal(marker.type, 'context');
     assert.equal(marker.elements[0].text, 'poll_marker:summer-sports');
+  });
+
+  test('includes an admin delete action before the marker', () => {
+    const blocks = buildButtonPollBlocks(poll, {}, 'summer-sports');
+    const action = blocks[blocks.length - 2];
+    assert.equal(action.type, 'actions');
+    assert.equal(action.elements[0].action_id, 'admin_delete_message');
+    assert.equal(action.elements[0].text.text, 'Admin Delete');
   });
 
   test('falls back to NUMBER_EMOJIS when poll has no emojis array', () => {

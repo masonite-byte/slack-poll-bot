@@ -14,7 +14,6 @@ import (
 	"github.com/masonite-byte/slack-poll-bot/internal/slackclient"
 )
 
-
 var stateFile = "polls/_schedule_state.json"
 
 func main() {
@@ -66,8 +65,7 @@ func main() {
 		}
 
 		slog.Info("posting scheduled poll", "slug", slug, "schedule", p.Schedule)
-		os.Setenv("SLACK_CHANNEL_ID", channelID)
-		client := slackclient.New()
+		client := slackclient.NewWithChannel(channelID)
 
 		if err := runner.RunPostCustomPoll(client, p); err != nil {
 			slog.Error("failed to post scheduled poll", "slug", slug, "error", err)

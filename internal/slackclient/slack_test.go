@@ -1,10 +1,32 @@
 package slackclient
 
 import (
+	"os"
 	"testing"
 
 	"github.com/slack-go/slack"
 )
+
+func TestNewWithChannelUsesExplicitChannel(t *testing.T) {
+	origToken := os.Getenv("SLACK_BOT_TOKEN")
+	origChannel := os.Getenv("SLACK_CHANNEL_ID")
+	t.Cleanup(func() {
+		_ = os.Setenv("SLACK_BOT_TOKEN", origToken)
+		_ = os.Setenv("SLACK_CHANNEL_ID", origChannel)
+	})
+
+	if err := os.Setenv("SLACK_BOT_TOKEN", "xoxb-test"); err != nil {
+		t.Fatalf("set token: %v", err)
+	}
+	if err := os.Setenv("SLACK_CHANNEL_ID", "C_DEFAULT"); err != nil {
+		t.Fatalf("set default channel: %v", err)
+	}
+
+	client := NewWithChannel("C_OVERRIDE")
+	if got := client.ChannelID(); got != "C_OVERRIDE" {
+		t.Fatalf("expected explicit channel override, got %q", got)
+	}
+}
 
 func TestContainsPollMarker(t *testing.T) {
 	markerBlock := slack.NewContextBlock("poll_marker",

@@ -122,9 +122,9 @@ func TestCustomPollToBlocksNoSlugFallsBackToCustom(t *testing.T) {
 func TestCustomPollToBlocksOptionCount(t *testing.T) {
 	p := &CustomPoll{Name: "Test", Options: []string{"A", "B", "C"}, Slug: "test"}
 	blocks := p.ToBlocks()
-	// header + prompt + 3 options + marker = 6
-	if len(blocks) != 6 {
-		t.Fatalf("expected 6 blocks, got %d", len(blocks))
+	// header + prompt + 3 options + delete action + marker = 7
+	if len(blocks) != 7 {
+		t.Fatalf("expected 7 blocks, got %d", len(blocks))
 	}
 }
 
@@ -275,18 +275,18 @@ func TestToPollInstanceReactionModeStillHasEmojis(t *testing.T) {
 func TestToBlocksButtonModeBlockCount(t *testing.T) {
 	p := &CustomPoll{Name: "Test", Options: []string{"A", "B", "C"}, VotingMode: "button", Slug: "test"}
 	blocks := p.ToBlocks()
-	// header + prompt + 3 sections (each with accessory) + marker = 6
-	if len(blocks) != 6 {
-		t.Fatalf("expected 6 blocks, got %d", len(blocks))
+	// header + prompt + 3 sections (each with accessory) + delete action + marker = 7
+	if len(blocks) != 7 {
+		t.Fatalf("expected 7 blocks, got %d", len(blocks))
 	}
 }
 
 func TestToBlocksButtonModeBlockCountWithDescription(t *testing.T) {
 	p := &CustomPoll{Name: "Test", Options: []string{"A", "B"}, VotingMode: "button", Slug: "test", Description: "Vote!"}
 	blocks := p.ToBlocks()
-	// header + prompt + 2 sections (each with accessory) + description + marker = 6
-	if len(blocks) != 6 {
-		t.Fatalf("expected 6 blocks, got %d", len(blocks))
+	// header + prompt + 2 sections (each with accessory) + description + delete action + marker = 7
+	if len(blocks) != 7 {
+		t.Fatalf("expected 7 blocks, got %d", len(blocks))
 	}
 }
 
@@ -345,6 +345,23 @@ func TestToBlocksButtonModeMarkerUsesSlug(t *testing.T) {
 	text := marker.ContextElements.Elements[0].(*slack.TextBlockObject)
 	if text.Text != "poll_marker:my-slug" {
 		t.Fatalf("expected poll_marker:my-slug, got %q", text.Text)
+	}
+}
+
+func TestCustomPollToBlocksIncludesAdminDeleteAction(t *testing.T) {
+	p := &CustomPoll{Name: "Test", Options: []string{"A", "B"}, Slug: "test"}
+	blocks := p.ToBlocks()
+
+	action, ok := blocks[len(blocks)-2].(*slack.ActionBlock)
+	if !ok {
+		t.Fatalf("expected delete action block before marker, got %T", blocks[len(blocks)-2])
+	}
+	button, ok := action.Elements.ElementSet[0].(*slack.ButtonBlockElement)
+	if !ok {
+		t.Fatalf("expected delete action button, got %T", action.Elements.ElementSet[0])
+	}
+	if button.ActionID != "admin_delete_message" {
+		t.Fatalf("expected admin_delete_message action, got %q", button.ActionID)
 	}
 }
 

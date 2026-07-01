@@ -338,6 +338,58 @@ describe('poll_vote', () => {
   });
 });
 
+describe('admin_delete_message', () => {
+  test('allows the configured admin to delete a Poll-inator message', async () => {
+    const fetchCalls = mockFetch({
+      'slack.com/api/chat.delete': [JSON.stringify({ ok: true })],
+    });
+
+    const env = makeEnv({ ADMIN_USER_ID: 'U_ADMIN' });
+    const payload = {
+      type: 'block_actions',
+      user: { id: 'U_ADMIN' },
+      channel: { id: 'C_CHAN' },
+      message: { ts: '123.456' },
+      actions: [{ action_id: 'admin_delete_message', value: 'delete_message' }],
+    };
+
+    const res = await worker.fetch(makeInteractionRequest(payload), env, env._ctx);
+    assert.equal(res.status, 200);
+    await env._ctx.flush();
+
+    const deleteCall = fetchCalls.find(call => call.url.toString().includes('chat.delete'));
+    assert.ok(deleteCall, 'expected chat.delete to be called');
+    const body = JSON.parse(deleteCall.opts.body);
+    assert.equal(body.channel, 'C_CHAN');
+    assert.equal(body.ts, '123.456');
+  });
+
+  test('rejects non-admin users and posts an ephemeral error', async () => {
+    const fetchCalls = mockFetch({
+      'slack.com/api/chat.postEphemeral': [JSON.stringify({ ok: true })],
+    });
+
+    const env = makeEnv({ ADMIN_USER_ID: 'U_ADMIN' });
+    const payload = {
+      type: 'block_actions',
+      user: { id: 'U_USER' },
+      channel: { id: 'C_CHAN' },
+      message: { ts: '123.456' },
+      actions: [{ action_id: 'admin_delete_message', value: 'delete_message' }],
+    };
+
+    const res = await worker.fetch(makeInteractionRequest(payload), env, env._ctx);
+    assert.equal(res.status, 200);
+    await env._ctx.flush();
+
+    assert.ok(!fetchCalls.some(call => call.url.toString().includes('chat.delete')), 'should not call chat.delete');
+    const ephemeralCall = fetchCalls.find(call => call.url.toString().includes('chat.postEphemeral'));
+    assert.ok(ephemeralCall, 'expected an ephemeral error');
+    const body = JSON.parse(ephemeralCall.opts.body);
+    assert.match(body.text, /Only the configured admin can delete Poll-inator messages/);
+  });
+});
+
 describe('selected poll workflows', () => {
   test('post_results forwards the selected weekly slug to the workflow', async () => {
     const fetchCalls = mockFetch({
