@@ -6,6 +6,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
+	"strings"
 
 	"github.com/masonite-byte/slack-poll-bot/internal/runner"
 	"github.com/masonite-byte/slack-poll-bot/internal/slackclient"
@@ -75,6 +77,8 @@ func (s *Server) handleSlash(w http.ResponseWriter, r *http.Request) {
 		message = "Voters notified."
 	case "/delete":
 		message, responseErr = runner.DeleteLatestPoll(s.api)
+	case "/say":
+		message, responseErr = s.handleAdminSay(cmd)
 	case "/options":
 		message = runner.BuildOptionsText()
 	case "/vote":
@@ -98,6 +102,40 @@ func (s *Server) handleSlash(w http.ResponseWriter, r *http.Request) {
 		"response_type": "ephemeral",
 		"text":          message,
 	})
+}
+
+func (s *Server) handleAdminSay(cmd slack.SlashCommand) (string, error) {
+	adminID := os.Getenv("SLACK_ADMIN_USER_ID")
+	if adminID == "" {
+		return "", errAdminNotConfigured
+	}
+	if cmd.UserID != adminID {
+		return "", errAdminOnlyCommand
+	}
+
+	text := strings.TrimSpace(cmd.Text)
+	if text == "" {
+		return "", errSayMessageRequired
+	}
+
+	if _, _, err := s.api.PostMessage(text); err != nil {
+		return "", err
+	}
+	return "Message posted as bot.", nil
+}
+
+var (
+	errAdminNotConfigured = &slashCommandError{message: "SLACK_ADMIN_USER_ID is not configured for /say."}
+	errAdminOnlyCommand   = &slashCommandError{message: "Only the configured admin can use /say."}
+	errSayMessageRequired = &slashCommandError{message: "Usage: /say your message here"}
+)
+
+type slashCommandError struct {
+	message string
+}
+
+func (e *slashCommandError) Error() string {
+	return e.message
 }
 
 func (s *Server) writeJSON(w http.ResponseWriter, status int, payload interface{}) {
