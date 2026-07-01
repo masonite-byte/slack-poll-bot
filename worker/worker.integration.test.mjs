@@ -188,6 +188,7 @@ describe('slash commands', () => {
     const body = await res.json();
     assert.equal(body.response_type, 'ephemeral');
     assert.ok(body.text.length > 0);
+    assert.match(body.text, /\/say\s+- post a message as the bot \(admin only\)\./);
   });
 
   test('/about returns 200 with ephemeral response', async () => {
@@ -231,6 +232,59 @@ describe('slash commands', () => {
     const body = await res.json();
     assert.match(body.text, /`weekly` — Weekly Sports Poll/);
     assert.match(body.text, /`summer-sports` — Summer Sports/);
+  });
+
+  test('/say posts a bot message for the configured admin', async () => {
+    const fetchCalls = mockFetch({
+      'slack.com/api/chat.postMessage': [JSON.stringify({ ok: true })],
+      'slack.com/api/chat.postEphemeral': [JSON.stringify({ ok: true })],
+    });
+    const env = makeEnv();
+
+    const res = await worker.fetch(
+      makeSlashRequest('/say', { user_id: 'U_ADMIN', text: 'hello from bot' }),
+      env,
+      env._ctx,
+    );
+    assert.equal(res.status, 200);
+    assert.equal(await res.text(), '');
+
+    await env._ctx.flush();
+
+    const postCall = fetchCalls.find(call => call.url.toString().includes('chat.postMessage'));
+    assert.ok(postCall);
+    const postBody = JSON.parse(postCall.opts.body);
+    assert.equal(postBody.channel, 'C_CHAN');
+    assert.equal(postBody.text, 'hello from bot');
+
+    const ephemeralCall = fetchCalls.find(call => call.url.toString().includes('chat.postEphemeral'));
+    assert.ok(ephemeralCall);
+    const ephemeralBody = JSON.parse(ephemeralCall.opts.body);
+    assert.equal(ephemeralBody.text, '✅ Message posted as the bot.');
+  });
+
+  test('/say rejects non-admin users', async () => {
+    const res = await worker.fetch(
+      makeSlashRequest('/say', { user_id: 'U_USER', text: 'hello from bot' }),
+      makeEnv(),
+      {},
+    );
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.response_type, 'ephemeral');
+    assert.match(body.text, /Only the configured admin can use `\/say`\./);
+  });
+
+  test('/say requires message text', async () => {
+    const res = await worker.fetch(
+      makeSlashRequest('/say', { user_id: 'U_ADMIN', text: '   ' }),
+      makeEnv(),
+      {},
+    );
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.response_type, 'ephemeral');
+    assert.equal(body.text, 'Usage: `/say your message here`');
   });
 });
 

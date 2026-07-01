@@ -6,6 +6,7 @@ const HELP_TEXT = [
   '/newpoll   - pick and post a poll from a dropdown.',
   '/runoff    - start a runoff poll when tied.',
   '/delete    - permanently delete a custom poll (authors only).',
+  '/say       - post a message as the bot (admin only).',
   '/create    - create a custom poll via a form.',
   '/edit      - edit an existing custom poll (authors and admin only).',
   '/polls     - list all available custom polls.',
@@ -1440,6 +1441,23 @@ async function updateMessage(channelId, ts, text, env) {
   });
 }
 
+function adminUserId(env) {
+  return env.ADMIN_USER_ID || env.SLACK_ADMIN_USER_ID || '';
+}
+
+async function postMessage(channelId, text, env) {
+  const resp = await fetch('https://slack.com/api/chat.postMessage', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${env.SLACK_BOT_TOKEN}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ channel: channelId, text }),
+  });
+  const data = await resp.json();
+  if (!data.ok) throw new Error(`chat.postMessage failed: ${data.error}`);
+}
+
 async function postEphemeral(channelId, userId, text, env) {
   await fetch('https://slack.com/api/chat.postEphemeral', {
     method: 'POST',
@@ -2198,6 +2216,26 @@ async function handleSlashCommand(request, env) {
       };
       const dp = deleteWork();
       if (typeof env._ctx?.waitUntil === 'function') env._ctx.waitUntil(dp);
+      return new Response('', { status: 200 });
+    }
+
+    case '/say': {
+      const adminId = adminUserId(env);
+      if (!adminId) return ephemeral('❌ Admin posting is not configured.');
+      if (userId !== adminId) return ephemeral('❌ Only the configured admin can use `/say`.');
+      if (!text) return ephemeral('Usage: `/say your message here`');
+
+      const sayWork = async () => {
+        try {
+          await postMessage(channelId, text, env);
+          await postEphemeral(channelId, userId, '✅ Message posted as the bot.', env);
+        } catch (e) {
+          console.error('say command error:', e);
+          await postEphemeral(channelId, userId, '❌ Failed to post message. Please try again.', env);
+        }
+      };
+      const sw = sayWork();
+      if (typeof env._ctx?.waitUntil === 'function') env._ctx.waitUntil(sw);
       return new Response('', { status: 200 });
     }
 
