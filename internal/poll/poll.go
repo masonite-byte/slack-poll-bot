@@ -77,12 +77,24 @@ func BuildPollBlocks(title, prompt, marker string, options []string, emojiMap ma
 		))
 	}
 
+	blocks = append(blocks, adminDeleteActionBlock())
+
 	markerBlock := slack.NewContextBlock("poll_marker",
 		slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("poll_marker:%s", marker), false, false),
 	)
 	blocks = append(blocks, markerBlock)
 
 	return blocks
+}
+
+func adminDeleteActionBlock() *slack.ActionBlock {
+	btn := slack.NewButtonBlockElement(
+		"admin_delete_message",
+		"delete_message",
+		slack.NewTextBlockObject("plain_text", "Admin Delete", false, false),
+	)
+	btn.Style = "danger"
+	return slack.NewActionBlock("admin_delete_message_actions", btn)
 }
 
 // reactionForOption resolves the emoji name for an option. Checks emojiMap first,

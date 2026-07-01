@@ -70,8 +70,7 @@ func main() {
 		}
 
 		slog.Info("posting scheduled results", "slug", slug, "results_schedule", p.ResultsSchedule)
-		os.Setenv("SLACK_CHANNEL_ID", channelID)
-		client := slackclient.New()
+		client := slackclient.NewWithChannel(channelID)
 
 		if err := runner.RunResultsForSlug(client, slug); err != nil {
 			slog.Error("failed to post scheduled results", "slug", slug, "error", err)

@@ -119,6 +119,15 @@ func TestBuildResultsReportsTopEvent(t *testing.T) {
 
 func TestBuildResultsBlocksIncludesResultsMarker(t *testing.T) {
 	blocks := BuildResultsBlocks([]pollResult{{Name: "soccer", Label: "Soccer", Count: 3}}, "weekly")
+	action, ok := blocks[len(blocks)-2].(*slack.ActionBlock)
+	if !ok {
+		t.Fatalf("expected delete action before results marker, got %T", blocks[len(blocks)-2])
+	}
+	button := action.Elements.ElementSet[0].(*slack.ButtonBlockElement)
+	if button.ActionID != "admin_delete_message" {
+		t.Fatalf("expected admin delete action_id, got %q", button.ActionID)
+	}
+
 	last := blocks[len(blocks)-1]
 	ctx, ok := last.(*slack.ContextBlock)
 	if !ok {

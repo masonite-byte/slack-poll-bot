@@ -37,10 +37,9 @@ type API interface {
 	SendDM(userID, text string) error
 }
 
-// New initializes the Slack client using environment variables and validates them
-func New() *Client {
+// NewWithChannel initializes the Slack client using SLACK_BOT_TOKEN and an explicit channel ID.
+func NewWithChannel(channel string) *Client {
 	token := os.Getenv("SLACK_BOT_TOKEN")
-	channel := os.Getenv("SLACK_CHANNEL_ID")
 	if token == "" || channel == "" {
 		slog.Error("missing required env vars", "SLACK_BOT_TOKEN_set", token != "", "SLACK_CHANNEL_ID_set", channel != "")
 		os.Exit(1)
@@ -50,6 +49,11 @@ func New() *Client {
 		api:       slack.New(token),
 		channelID: channel,
 	}
+}
+
+// New initializes the Slack client using environment variables and validates them.
+func New() *Client {
+	return NewWithChannel(os.Getenv("SLACK_CHANNEL_ID"))
 }
 
 // PostMessage sends a raw text message to the configured channel

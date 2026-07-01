@@ -42,6 +42,8 @@ const ABOUT_TEXT = [
   '_This bot has strong opinions about Ultimate Frisbee._',
 ].join('\n');
 
+const ADMIN_DELETE_ACTION_ID = 'admin_delete_message';
+
 function titleizeSlug(slug) {
   return slug.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
@@ -339,12 +341,29 @@ function buildButtonPollBlocks(pollData, counts, slug, voters = {}) {
   if (pollData.description) {
     blocks.push({ type: 'section', text: { type: 'mrkdwn', text: pollData.description } });
   }
+  blocks.push(buildAdminDeleteBlock());
   blocks.push({
     type: 'context',
     block_id: 'poll_marker',
     elements: [{ type: 'mrkdwn', text: `poll_marker:${slug}` }],
   });
   return blocks;
+}
+
+function buildAdminDeleteBlock() {
+  return {
+    type: 'actions',
+    block_id: 'admin_delete_message_actions',
+    elements: [
+      {
+        type: 'button',
+        text: { type: 'plain_text', text: 'Admin Delete' },
+        style: 'danger',
+        action_id: ADMIN_DELETE_ACTION_ID,
+        value: 'delete_message',
+      },
+    ],
+  };
 }
 
 async function postReactionRunoff(winners, pollData, channelId, env) {
@@ -365,6 +384,7 @@ async function postReactionRunoff(winners, pollData, channelId, env) {
     { type: 'section', text: { type: 'mrkdwn', text: '*📊 Runoff Poll*' } },
     { type: 'section', text: { type: 'mrkdwn', text: '@channel: A tie was detected. Vote again for the final winner:' } },
     ...winners.map(w => ({ type: 'section', text: { type: 'mrkdwn', text: `    :${resolveEmoji(w)}: ${w}` } })),
+    buildAdminDeleteBlock(),
     { type: 'context', block_id: 'poll_marker', elements: [{ type: 'mrkdwn', text: 'poll_marker:runoff' }] },
   ];
 
@@ -430,6 +450,7 @@ async function postButtonPollResults(slug, pollData, channelId, userId, env) {
       text: { type: 'mrkdwn', text: `    :${r.emoji}: ${r.label} — ${r.count} vote${r.count !== 1 ? 's' : ''}` },
     })),
     { type: 'section', text: { type: 'mrkdwn', text: summary } },
+    buildAdminDeleteBlock(),
     { type: 'context', block_id: 'results_marker', elements: [{ type: 'mrkdwn', text: `results_marker:${slug}` }] },
   ];
 
@@ -1461,10 +1482,40 @@ async function handleInteraction(request, env) {
   // ── block_actions: button clicks (e.g. delete confirmation DM) ──────────────
   if (payload.type === 'block_actions') {
     const action = payload.actions?.[0];
-    const channelId = payload.channel?.id;
-    const messageTs = payload.message?.ts;
+    const channelId = payload.channel?.id || payload.container?.channel_id;
+    const messageTs = payload.message?.ts || payload.container?.message_ts;
+    const userId = payload.user?.id;
 
-    if (action?.action_id === 'delete_poll_confirm') {
+    if (action?.action_id === ADMIN_DELETE_ACTION_ID) {
+      const work = async () => {
+        if (!env.ADMIN_USER_ID || userId !== env.ADMIN_USER_ID) {
+          if (channelId && userId) {
+            await postEphemeral(channelId, userId, '❌ Only the configured admin can delete Poll-inator messages.', env);
+          }
+          return;
+        }
+        if (!channelId || !messageTs) {
+          console.error('admin_delete_message: missing channel or message timestamp');
+          return;
+        }
+        const resp = await fetch('https://slack.com/api/chat.delete', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${env.SLACK_BOT_TOKEN}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ channel: channelId, ts: messageTs }),
+        });
+        const data = await resp.json();
+        if (!data.ok) {
+          console.error('admin_delete_message error:', data.error);
+          if (userId) {
+            await postEphemeral(channelId, userId, `❌ Failed to delete message: ${data.error}`, env);
+          }
+        }
+      };
+      if (typeof env._ctx?.waitUntil === 'function') env._ctx.waitUntil(work());
+    } else if (action?.action_id === 'delete_poll_confirm') {
       const slug = action.value;
       const work = async () => {
         try {

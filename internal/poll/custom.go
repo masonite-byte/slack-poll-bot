@@ -181,6 +181,7 @@ func (p *CustomPoll) ToBlocks() []slack.Block {
 			nil, nil,
 		))
 	}
+	blocks = append(blocks, adminDeleteActionBlock())
 	marker := "poll_marker:custom"
 	if p.Slug != "" {
 		marker = "poll_marker:" + p.Slug
@@ -232,6 +233,8 @@ func (p *CustomPoll) toButtonBlocks() []slack.Block {
 			nil, nil,
 		))
 	}
+
+	blocks = append(blocks, adminDeleteActionBlock())
 
 	marker := "poll_marker:custom"
 	if p.Slug != "" {

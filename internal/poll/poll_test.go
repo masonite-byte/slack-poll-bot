@@ -9,13 +9,28 @@ import (
 
 func TestBuildPollBlocksIncludesMarkerAndOptions(t *testing.T) {
 	blocks := BuildPollBlocks("Test Poll", "Vote now:", "testmarker", []string{"Option A", "Option B"}, nil)
-	if len(blocks) != 5 {
-		t.Fatalf("expected 5 blocks, got %d", len(blocks))
+	if len(blocks) != 6 {
+		t.Fatalf("expected 6 blocks, got %d", len(blocks))
 	}
 
-	marker, ok := blocks[4].(*slack.ContextBlock)
+	action, ok := blocks[4].(*slack.ActionBlock)
 	if !ok {
-		t.Fatalf("expected last block to be *slack.ContextBlock, got %T", blocks[4])
+		t.Fatalf("expected second-to-last block to be *slack.ActionBlock, got %T", blocks[4])
+	}
+	if len(action.Elements.ElementSet) != 1 {
+		t.Fatalf("expected one delete action element, got %d", len(action.Elements.ElementSet))
+	}
+	button, ok := action.Elements.ElementSet[0].(*slack.ButtonBlockElement)
+	if !ok {
+		t.Fatalf("expected delete action to be a button, got %T", action.Elements.ElementSet[0])
+	}
+	if button.ActionID != "admin_delete_message" {
+		t.Fatalf("expected delete button action_id admin_delete_message, got %q", button.ActionID)
+	}
+
+	marker, ok := blocks[5].(*slack.ContextBlock)
+	if !ok {
+		t.Fatalf("expected last block to be *slack.ContextBlock, got %T", blocks[5])
 	}
 	if marker.BlockID != "poll_marker" {
 		t.Fatalf("expected marker BlockID poll_marker, got %q", marker.BlockID)
@@ -33,8 +48,8 @@ func TestBuildPollBlocksIncludesMarkerAndOptions(t *testing.T) {
 func TestRunoffPollBlocksPreservesTieOptions(t *testing.T) {
 	options := []string{"Option A", "Option B"}
 	blocks := RunoffPollBlocks(options, nil)
-	if len(blocks) != 5 {
-		t.Fatalf("expected 5 blocks, got %d", len(blocks))
+	if len(blocks) != 6 {
+		t.Fatalf("expected 6 blocks, got %d", len(blocks))
 	}
 
 	optionA, ok := blocks[2].(*slack.SectionBlock)
@@ -43,6 +58,15 @@ func TestRunoffPollBlocksPreservesTieOptions(t *testing.T) {
 	}
 	if !strings.Contains(optionA.Text.Text, "Option A") {
 		t.Fatalf("expected Option A text in runoff blocks, got %q", optionA.Text.Text)
+	}
+
+	action, ok := blocks[4].(*slack.ActionBlock)
+	if !ok {
+		t.Fatalf("expected action block before marker, got %T", blocks[4])
+	}
+	button := action.Elements.ElementSet[0].(*slack.ButtonBlockElement)
+	if button.ActionID != "admin_delete_message" {
+		t.Fatalf("expected admin delete action_id, got %q", button.ActionID)
 	}
 }
 
