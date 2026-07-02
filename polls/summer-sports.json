@@ -1,0 +1,17 @@
+{
+  "name": "Summer Sports",
+  "options": [
+    "Yes",
+    "No"
+  ],
+  "emojis": [
+    "white_check_mark",
+    "x"
+  ],
+  "author_id": "U08V6CJ885P",
+  "preamble": "Should we move back sports night to 7:00????",
+  "voting_mode": "button",
+  "anonymous": false,
+  "exclude_previous_winner": true,
+  "channel_id": "C0BAL95D0U9"
+}
