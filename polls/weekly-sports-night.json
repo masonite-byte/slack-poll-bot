@@ -1,0 +1,16 @@
+{
+  "name": "Weekly Sports night",
+  "options": [
+    "Yes",
+    "No"
+  ],
+  "emojis": [
+    "white_check_mark",
+    "x"
+  ],
+  "author_id": "U08V6CJ885P",
+  "preamble": "Should we continue a weekly sports night? (“Yes” if you plan on joining regularly, “No” if not)",
+  "voting_mode": "button",
+  "anonymous": false,
+  "channel_id": "C055PGYQSBE"
+}
